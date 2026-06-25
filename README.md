@@ -169,8 +169,6 @@ Supported placeholders in header/body templates:
 - `{{image_base64}}`
 - `{{image_width}}`
 - `{{image_height}}`
-- `{{full_region_xyxy}}`
-- `{{full_region_polygon}}`
 - `{{image_url}}`
 - `{{prompt}}`
 - `{{text}}`

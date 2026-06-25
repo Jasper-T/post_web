@@ -1,0 +1,35 @@
+services:
+  webui-backend:
+    image: dev:latest
+    container_name: webui-backend
+    working_dir: /workspace/project/web
+    command: >
+      sh -c "uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      PYTHONPATH: /workspace/project/web:/workspace/projects/dsetkit/src
+      FUXING_DATA_ROOT: /data/fuxing
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_DIR: /data/fuxing/logs
+      LOG_ROTATION: ${LOG_ROTATION:-10 MB}
+      LOG_RETENTION: ${LOG_RETENTION:-14 days}
+    volumes:
+      - ./:/workspace/project/web
+      - ${FUXING_DATA_DIR:-../data}:/data/fuxing
+      - D:/works/projects/dsetkit/:/workspace/projects/dsetkit/:ro
+      - D:/works/projects/00_datasets/:/data/datasets/
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  webui-frontend:
+    image: webui-frontend:latest
+    container_name: webui-frontend
+    build:
+      context: ./frontend
+      args:
+        DOCKER_HUB_MIRROR: ${DOCKER_HUB_MIRROR:-docker.io/library}
+    depends_on:
+      - webui-backend
+    ports:
+      - "5173:80"
+    restart: unless-stopped

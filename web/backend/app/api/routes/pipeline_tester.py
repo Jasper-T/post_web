@@ -1,0 +1,131 @@
+from fastapi import APIRouter
+
+from backend.app.schemas.pipeline_tester import (
+    PipelineAssetResponse,
+    PipelineAssetSaveRequest,
+    PipelineEditor,
+    PipelineGroupCreateRequest,
+    PipelineGroupMoveRequest,
+    PipelineGroupRenameRequest,
+    PipelineListResponse,
+    PipelineTemplateCatalogResponse,
+    RunPipelineRequest,
+    RunPipelineResponse,
+    PipelineRunResultsResponse,
+    SavePipelineResponse,
+)
+from backend.app.schemas.visualization import (
+    GenerateGTRequest,
+    SaveVisualizationRequest,
+    VisualizationResponse,
+)
+from backend.app.services.pipeline_tester import (
+    add_pipeline_group,
+    delete_pipeline,
+    get_pipeline_editor,
+    list_pipelines,
+    list_pipeline_templates,
+    load_pipeline_run_results,
+    move_pipeline_to_group,
+    read_pipeline_asset,
+    remove_pipeline_group,
+    run_pipeline,
+    save_pipeline_asset,
+    save_pipeline,
+    update_pipeline_group_name,
+)
+from backend.app.services.visualization import generate_gt_cache, save_visualizations
+
+
+router = APIRouter(prefix="/pipelines", tags=["pipelines"])
+
+
+@router.get("", response_model=PipelineListResponse)
+def read_pipelines() -> PipelineListResponse:
+    return list_pipelines()
+
+
+@router.post("/groups", response_model=PipelineListResponse)
+def create_group(request: PipelineGroupCreateRequest) -> PipelineListResponse:
+    return add_pipeline_group(request)
+
+
+@router.delete("/groups/{name}", response_model=PipelineListResponse)
+def delete_group(name: str) -> PipelineListResponse:
+    return remove_pipeline_group(name)
+
+
+@router.patch("/groups/{name}", response_model=PipelineListResponse)
+def rename_group(name: str, request: PipelineGroupRenameRequest) -> PipelineListResponse:
+    return update_pipeline_group_name(name, request)
+
+
+@router.get("/templates", response_model=PipelineTemplateCatalogResponse)
+def read_pipeline_templates() -> PipelineTemplateCatalogResponse:
+    return list_pipeline_templates()
+
+
+@router.post("/assets", response_model=PipelineAssetResponse)
+def create_or_update_pipeline_asset(request: PipelineAssetSaveRequest) -> PipelineAssetResponse:
+    return save_pipeline_asset(request)
+
+
+@router.get("/assets", response_model=PipelineAssetResponse)
+def get_pipeline_asset(
+    path: str | None = None,
+    groupName: str | None = None,
+    displayName: str | None = None,
+    fileName: str | None = None,
+) -> PipelineAssetResponse:
+    return read_pipeline_asset(
+        path=path,
+        group_name=groupName,
+        display_name=displayName,
+        file_name=fileName,
+    )
+
+
+@router.get("/{name}", response_model=PipelineEditor)
+def read_pipeline(name: str) -> PipelineEditor:
+    return get_pipeline_editor(name)
+
+
+@router.post("", response_model=SavePipelineResponse)
+def create_or_update_pipeline(request: PipelineEditor) -> SavePipelineResponse:
+    return save_pipeline(request)
+
+
+@router.get("/{name}/results", response_model=PipelineRunResultsResponse)
+def read_pipeline_results(
+    name: str,
+    inputPath: str | None = None,
+    runFolder: str | None = None,
+) -> PipelineRunResultsResponse:
+    return load_pipeline_run_results(name, input_path=inputPath, run_folder=runFolder)
+
+
+@router.post("/{name}/run", response_model=RunPipelineResponse)
+def execute_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
+    return run_pipeline(name, request)
+
+
+@router.post("/{name}/visualizations/gt", response_model=VisualizationResponse)
+def create_gt_visualizations(name: str, request: GenerateGTRequest) -> VisualizationResponse:
+    get_pipeline_editor(name)
+    return VisualizationResponse(items=generate_gt_cache(request.imagePaths, request.labelDir, request.format, request.names))
+
+
+@router.post("/{name}/visualizations/save", response_model=VisualizationResponse)
+def save_pipeline_visualizations(name: str, request: SaveVisualizationRequest) -> VisualizationResponse:
+    get_pipeline_editor(name)
+    return VisualizationResponse(items=save_visualizations(name, request.kind, request.imagePaths, request.labelDir))
+
+
+@router.post("/{name}/group", response_model=PipelineListResponse)
+def update_pipeline_group(name: str, request: PipelineGroupMoveRequest) -> PipelineListResponse:
+    return move_pipeline_to_group(name, request)
+
+
+@router.delete("/{name}", response_model=PipelineListResponse)
+def remove_pipeline(name: str, permanent: bool = False) -> PipelineListResponse:
+    return delete_pipeline(name, permanent=permanent)

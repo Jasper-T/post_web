@@ -1,0 +1,2226 @@
+<template>
+  <div class="app-page postman-shell" :class="{ 'postman-shell-collapsed': sidebarCollapsed }">
+    <GroupedCollectionSidebar
+      :groups="collectionGroups"
+      :active-item-key="editor.name"
+      title="Pipelines"
+      manager-title="Collections Editor"
+      trash-group-name="Deleted"
+      trash-label="Deleted"
+      @select-item="loadPipeline"
+      @create-group="submitCreateGroup"
+      @rename-group="submitRenameGroup"
+      @delete-group="deleteGroup"
+      @move-item="submitMovePipeline"
+      @delete-item="handleCollectionDeleteItem"
+      @collapse-change="sidebarCollapsed = $event"
+    />
+
+    <section class="workspace-shell">
+      <div class="request-bar request-bar-top">
+        <select v-model="editor.method" class="request-method-select compact-select">
+          <option>POST</option>
+          <option>GET</option>
+          <option>PUT</option>
+          <option>PATCH</option>
+          <option>DELETE</option>
+        </select>
+        <div class="meta-input-save-wrap request-url-save-wrap">
+          <input v-model.trim="editor.url" class="request-url-input" placeholder="Input API URL" />
+          <button
+            class="small-button icon-button meta-save-button"
+            type="button"
+            :disabled="savingPipeline"
+            title="Save pipeline URL"
+            aria-label="Save pipeline URL"
+            @click="savePipeline"
+          >
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4h12l2 2v14H5z" />
+              <path d="M8 4v6h8V4M8 20v-6h8v6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="request-meta-bar request-meta-bar-compact">
+        <label class="inline-meta-field">
+          <span>Pipeline Name</span>
+          <div class="meta-input-save-wrap">
+            <input v-model.trim="editor.name" placeholder="demo_detection_v2" />
+            <button
+              class="small-button icon-button meta-save-button"
+              type="button"
+              :disabled="savingPipeline"
+              title="Save pipeline name"
+              aria-label="Save pipeline name"
+              @click="savePipeline"
+            >
+              <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4h12l2 2v14H5z" />
+                <path d="M8 4v6h8V4M8 20v-6h8v6" />
+              </svg>
+            </button>
+          </div>
+        </label>
+        <label class="inline-meta-field">
+          <span>Display Name</span>
+          <div class="meta-input-save-wrap">
+            <input v-model.trim="editor.displayName" placeholder="Demo Detection V2" />
+            <button
+              class="small-button icon-button meta-save-button"
+              type="button"
+              :disabled="savingPipeline"
+              title="Save display name"
+              aria-label="Save display name"
+              @click="savePipeline"
+            >
+              <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4h12l2 2v14H5z" />
+                <path d="M8 4v6h8V4M8 20v-6h8v6" />
+              </svg>
+            </button>
+          </div>
+        </label>
+        <label class="inline-meta-field grow">
+          <span>Image Path</span>
+          <div class="path-picker-row">
+            <div class="meta-input-save-wrap">
+              <input v-model="editor.inputPath" placeholder="Select image or directory" @change="loadResponseQueue(editor.inputPath)" />
+              <button
+                class="small-button icon-button meta-save-button"
+                type="button"
+                :disabled="queueLoading || !editor.inputPath"
+                title="读取图片列表"
+                aria-label="读取图片列表"
+                @click="loadResponseQueue(editor.inputPath)"
+              >
+                <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 4h12l2 2v14H5z" />
+                  <path d="M8 4v6h8V4M8 20v-6h8v6" />
+                </svg>
+              </button>
+            </div>
+            <button class="small-button" type="button" @click="openFileBrowser">Browse</button>
+          </div>
+        </label>
+      </div>
+
+      <div class="workspace-view-shell">
+        <div class="workspace-view-switch" role="tablist" aria-label="Workspace View">
+          <button
+            class="workspace-view-button"
+            :class="{ active: activeWorkspaceView === 'request' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkspaceView === 'request'"
+            @click="activeWorkspaceView = 'request'"
+          >
+            请求解析
+          </button>
+          <button
+            class="workspace-view-button"
+            :class="{ active: activeWorkspaceView === 'response' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkspaceView === 'response'"
+            @click="activeWorkspaceView = 'response'"
+          >
+            响应展示
+          </button>
+        </div>
+
+        <section v-if="activeWorkspaceView === 'request'" class="panel request-panel workspace-view-panel">
+          <div class="editor-tabs">
+            <button
+              v-for="tab in requestTabs"
+              :key="tab.id"
+              class="editor-tab"
+              :class="{ active: activeRequestTab === tab.id }"
+              type="button"
+              :disabled="tab.disabled"
+              :title="tab.disabled ? tab.disabledReason : ''"
+              @click="switchRequestTab(tab)"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+
+          <div class="request-tab-body">
+            <div v-if="formError" class="tool-alert error">{{ formError }}</div>
+            <div v-if="formSuccess" class="tool-alert success">{{ formSuccess }}</div>
+
+            <JsonFieldBuilder
+              v-if="activeRequestTab === 'header'"
+              title="Header JSON"
+              v-model="headerTemplate"
+              :can-preview="Boolean(savedAssetTexts.header)"
+              :saved-text="savedAssetTexts.header"
+              :saving="assetSavingKey === 'header'"
+              @save="saveJsonAsset('header', $event)"
+            />
+
+            <JsonFieldBuilder
+              v-else-if="activeRequestTab === 'body'"
+              title="Body JSON"
+              v-model="bodyTemplate"
+              :can-preview="Boolean(savedAssetTexts.body)"
+              :saved-text="savedAssetTexts.body"
+              :saving="assetSavingKey === 'body'"
+              @save="saveJsonAsset('body', $event)"
+            />
+
+            <JsonFieldBuilder
+              v-else-if="activeRequestTab === 'response'"
+              title="Response JSON"
+              v-model="responseTemplate"
+              :can-preview="Boolean(savedAssetTexts.response)"
+              :saved-text="savedAssetTexts.response"
+              :saving="assetSavingKey === 'response'"
+              @save="saveJsonAsset('response', $event)"
+            />
+
+            <ResponseMappingEditor
+              v-else-if="activeRequestTab === 'mapping'"
+              :model-value="mappingModel"
+              :source-path-options="responseMappingPathOptions.fieldPaths"
+              :collection-path-options="responseMappingPathOptions.collectionPaths"
+              :item-path-options="responseMappingPathOptions.itemPaths"
+              @update:model-value="mappingModel = $event"
+              @save="saveMappingAsset"
+              @read="openAssetReader('mapping')"
+            />
+
+            <PostConfigEditor
+              v-else-if="activeRequestTab === 'post-config'"
+              :model-value="postConfigModel"
+              :body-path-options="bodyFieldPathOptions"
+              @update:model-value="postConfigModel = $event"
+              @save="savePostConfigAsset"
+              @read="openAssetReader('post_config')"
+            />
+
+            <div v-else class="empty-state compact-empty-state">
+              Import or save Body JSON and Response JSON first.
+            </div>
+          </div>
+        </section>
+
+        <section v-else class="panel response-panel workspace-view-panel">
+          <div class="response-display-grid" :style="responseGridStyle">
+            <section class="response-detail-panel">
+              <div class="editor-tabs response-tabs">
+                <button
+                  v-for="tab in responseTabs"
+                  :key="tab.id"
+                  class="editor-tab"
+                  :class="{ active: activeResponseTab === tab.id }"
+                  type="button"
+                  @click="activeResponseTab = tab.id"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+
+              <div class="response-body">
+                <div v-if="runError" class="tool-alert error">{{ runError }}</div>
+                <template v-if="activeResponseTab === 'raw-response'">
+                  <div v-if="selectedResult?.rawResponse" class="result-json-block">
+                    <pre>{{ stringify(selectedResult.rawResponse) }}</pre>
+                  </div>
+                  <div v-else-if="selectedResult?.error" class="tool-alert error">{{ selectedResult.error }}</div>
+                  <div v-else class="empty-state compact-empty-state">Select an image with a completed result.</div>
+                </template>
+
+                <template v-else-if="activeResponseTab === 'parsed-result'">
+                  <div v-if="selectedResult?.parsed" class="result-json-block">
+                    <pre>{{ stringify(normalizedParsedResult) }}</pre>
+                  </div>
+                  <div v-else-if="selectedResult?.error" class="tool-alert error">{{ selectedResult.error }}</div>
+                  <div v-else class="empty-state compact-empty-state">Select an image with a completed result.</div>
+                </template>
+
+                <template v-else-if="activeResponseTab === 'image-preview'">
+                  <div v-if="selectedImagePath" class="response-image-preview">
+                    <div class="response-image-preview-header">
+                      <strong :title="selectedImagePath">{{ baseName(selectedImagePath) }}</strong>
+                      <div class="preview-toolbar-actions">
+                        <template v-if="previewMode === 'gt'">
+                          <button class="small-button" type="button" @click="openGTNamesDialog">
+                            类别名称{{ gtNames.length ? ' (' + gtNames.length + ')' : '' }}
+                          </button>
+                          <select v-model="gtFormat" class="compact-select preview-format-select" @change="generateGTVisualizations">
+                            <option value="yolo">YOLO</option>
+                            <option value="labelme">LabelMe</option>
+                            <option value="voc">VOC</option>
+                          </select>
+                          <button class="small-button preview-label-folder" type="button" :title="gtLabelDir" @click="openGTBrowser">
+                            {{ gtLabelDir ? baseName(gtLabelDir) : '选择标注文件夹' }}
+                          </button>
+                        </template>
+                        <button
+                          class="small-button icon-button preview-save-button"
+                          type="button"
+                          title="保存标注图片"
+                          aria-label="保存标注图片"
+                          :disabled="!currentVisualizationPath || visualizationSaving"
+                          @click="openVisualizationSaveDialog"
+                        >
+                          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 4h12l2 2v14H5z" />
+                            <path d="M8 4v6h8V4M8 20v-6h8v6" />
+                          </svg>
+                        </button>
+                        <div class="preview-mode-switch" role="group" aria-label="Pred GT view">
+                          <button type="button" :class="{ active: previewMode === 'pred' }" @click="previewMode = 'pred'">Pred</button>
+                          <button type="button" :class="{ active: previewMode === 'gt' }" @click="previewMode = 'gt'">GT</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="response-image-preview-stage">
+                      <div v-if="gtGenerating && previewMode === 'gt'" class="preview-status-message">正在生成 GT 标注图...</div>
+                      <img v-else-if="currentVisualizationPath" :src="imageContentUrl(currentVisualizationPath)" :alt="baseName(selectedImagePath)" />
+                      <div v-else class="preview-status-message">
+                        {{ previewMode === 'pred' ? '当前图片没有 Pred 可视化缓存。' : gtPreviewMessage }}
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="empty-state compact-empty-state">Select an image to preview.</div>
+                </template>
+
+                <template v-else>
+                  <div v-if="selectedResult?.parsed" class="result-json-block annotation-conversion-preview">
+                    <pre>{{ stringify(normalizedParsedResult) }}</pre>
+                  </div>
+                  <div v-else-if="selectedResult?.error" class="tool-alert error">{{ selectedResult.error }}</div>
+                  <div v-else class="empty-state compact-empty-state">Select an image with a parsed result for annotation conversion.</div>
+                </template>
+              </div>
+            </section>
+
+            <div
+              class="response-column-divider"
+              role="separator"
+              aria-orientation="vertical"
+              title="Drag to resize panels"
+              @mousedown="startResponseResize"
+            ></div>
+
+            <aside class="response-queue-panel">
+              <div class="response-queue-toolbar">
+                <label class="response-select-all" title="选择当前筛选视图中的全部图片">
+                  <input
+                    :key="`select-all-${responseStatusFilter}`"
+                    type="checkbox"
+                    aria-label="选择当前视图全部图片"
+                    :checked="filteredSelectAllChecked"
+                    :indeterminate="filteredSelectAllIndeterminate"
+                    :disabled="!filteredResponseQueue.length"
+                    @change="toggleFilteredSelection($event.target.checked)"
+                  />
+                  <span>全选当前视图</span>
+                </label>
+                <button
+                  class="small-button response-load-results"
+                  type="button"
+                  :disabled="!editor.name"
+                  title="选择结果文件夹加载"
+                  @click="openResultsBrowser"
+                >
+                  加载结果
+                </button>
+                <select v-model="responseStatusFilter" class="response-status-filter compact-select" aria-label="Filter response status">
+                  <option value="all">All</option>
+                  <option value="new">New</option>
+                  <option value="success">Success</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <button
+                  class="send-button response-send-all"
+                  type="button"
+                  :disabled="runningAll || !editor.name || !editor.inputPath || !selectedResponseCount"
+                  @click="runAllImages"
+                >
+                  {{ runningAll ? "Sending..." : `Send All (${selectedResponseCount})` }}
+                </button>
+              </div>
+
+              <div class="response-queue-summary">
+                <span>{{ filteredResponseQueue.length }} / {{ responseQueue.length }} images</span>
+                <span>new {{ responseStatusCounts.new }} · success {{ responseStatusCounts.success }} · failed {{ responseStatusCounts.failed }}</span>
+              </div>
+
+              <div v-if="queueLoading" class="empty-state compact-empty-state">Loading images...</div>
+              <div v-else-if="!responseQueue.length" class="empty-state compact-empty-state">Select an image or folder first.</div>
+              <div v-else class="response-list-shell">
+                <div
+                  v-for="item in filteredResponseQueue"
+                  :key="item.imagePath"
+                  class="response-list-item"
+                  :class="[item.status, { active: selectedImagePath === item.imagePath }]"
+                  role="button"
+                  tabindex="0"
+                  @click="selectedImagePath = item.imagePath"
+                  @keydown.enter="selectedImagePath = item.imagePath"
+                >
+                  <div class="response-list-item-main">
+                    <label class="response-row-check" :title="'Select ' + item.name" @click.stop>
+                      <input
+                        type="checkbox"
+                        :checked="item.selected"
+                        @change="setResponseSelected(item.imagePath, $event.target.checked)"
+                      />
+                    </label>
+                    <strong :title="item.imagePath">{{ item.name }}</strong>
+                    <span class="response-status-badge">{{ item.status }}</span>
+                  </div>
+                  <div class="response-list-item-meta">
+                    <small>{{ item.elapsedMs == null ? "-" : item.elapsedMs + " ms" }}</small>
+                    <button
+                      class="response-item-send"
+                      type="button"
+                      :disabled="runningAll || item.sending || !editor.name"
+                      :title="'Send ' + item.name"
+                      :aria-label="'Send ' + item.name"
+                      @click.stop="runSingleImage(item)"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m4 4 17 8-17 8 3-8z" />
+                        <path d="M7 12h14" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <div v-if="showFileBrowser" class="file-browser-backdrop" @click.self="closeFileBrowser">
+      <div class="file-browser-dialog" :data-upload-parent-path="uploadParentPath">
+        <div class="file-browser-dialog-header browse-dialog-header-minimal">
+          <button
+            class="small-button icon-button file-browser-close-button"
+            type="button"
+            title="Close"
+            aria-label="Close"
+            @click="closeFileBrowser"
+          >
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </div>
+
+        <FileSystemTree
+          :root-node="rootNode"
+          :selected-path="activePath"
+          :highlight-path="uploadSelectionPath"
+          title="Data Root (/data)"
+          eyebrow="File System"
+          loading-message="Loading..."
+          :filter-loader="fetchFilteredChildren"
+          show-upload-button
+          :upload-target-path="uploadParentPath"
+          upload-allowed-root="/data/datasets"
+          @upload-complete="handleUploadComplete"
+          @refresh="reloadRoot"
+          @select="selectPath"
+          @highlight="selectUploadParent"
+          @toggle="toggleNode"
+          @load-more="loadMoreChildren"
+        />
+      </div>
+    </div>
+
+    <div v-if="resultsBrowser.visible" class="file-browser-backdrop" @click.self="closeResultsBrowser">
+      <div class="file-browser-dialog">
+        <div class="file-browser-dialog-header">
+          <div>
+            <p class="eyebrow">Pipeline Results</p>
+            <h3>选择结果文件夹</h3>
+          </div>
+          <button class="small-button" type="button" @click="closeResultsBrowser">关闭</button>
+        </div>
+
+        <FileSystemTree
+          :root-node="resultsRootNode"
+          :selected-path="resultsBrowser.selectedPath"
+          title="运行结果"
+          eyebrow="results/{pipeline}/post"
+          loading-message="加载中..."
+          :filter-loader="fetchFilteredChildren"
+          @refresh="reloadResultsRoot"
+          @select="selectResultsPath"
+          @toggle="toggleNode"
+          @load-more="loadMoreChildren"
+        />
+
+        <div class="file-browser-dialog-footer">
+          <div class="file-browser-path-preview">
+            <span>已选择</span>
+            <strong>{{ resultsBrowser.selectedPath || "未选择" }}</strong>
+          </div>
+          <button
+            class="small-button primary-button"
+            type="button"
+            :disabled="!resultsBrowser.selectedPath"
+            @click="loadSelectedResultsFolder"
+          >
+            加载
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="gtBrowser.visible" class="file-browser-backdrop" @click.self="closeGTBrowser">
+      <div class="file-browser-dialog">
+        <div class="file-browser-dialog-header">
+          <div><p class="eyebrow">Ground Truth</p><h3>选择标注文件夹</h3></div>
+          <button class="small-button icon-button file-browser-close-button" type="button" aria-label="Close GT browser" @click="closeGTBrowser">
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <FileSystemTree
+          :root-node="gtRootNode"
+          :selected-path="gtBrowser.selectedPath"
+          title="Datasets (/data/datasets)"
+          eyebrow="GT Labels"
+          loading-message="Loading..."
+          :filter-loader="fetchFilteredChildren"
+          @refresh="reloadGTRoot"
+          @select="selectGTLabelFolder"
+          @highlight="highlightGTPath"
+          @toggle="toggleNode"
+          @load-more="loadMoreChildren"
+        />
+        <div class="file-browser-dialog-footer">
+          <div class="file-browser-path-preview"><span>双击文件夹确认</span><strong>{{ gtBrowser.selectedPath || '未选择' }}</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showGTNamesDialog" class="json-import-backdrop" @click.self="showGTNamesDialog = false">
+      <div class="json-import-dialog gt-names-dialog">
+        <div class="json-import-dialog-header"><h4>GT 类别名称</h4><button class="small-button" type="button" @click="showGTNamesDialog = false">关闭</button></div>
+        <p class="gt-dialog-hint">每行一个类别，行号从 0 开始，对应 YOLO class_id。</p>
+        <textarea v-model="gtNamesDraft" class="gt-names-textarea" placeholder="person&#10;car&#10;bicycle"></textarea>
+        <div class="json-import-dialog-footer"><button class="small-button primary-button" type="button" @click="saveGTNames">保存并生成 GT</button></div>
+      </div>
+    </div>
+
+    <div v-if="visualizationSaveDialog.visible" class="json-import-backdrop" @click.self="closeVisualizationSaveDialog">
+      <div class="json-import-dialog visualization-save-dialog">
+        <div class="json-import-dialog-header"><h4>保存 {{ previewMode === 'pred' ? 'Pred' : 'GT' }} 标注图片？</h4><button class="small-button" type="button" @click="closeVisualizationSaveDialog">取消</button></div>
+        <p>缓存图片只有确认后才会保存到后端本地。</p>
+        <div v-if="visualizationSaveError" class="tool-alert error">{{ visualizationSaveError }}</div>
+        <div class="visualization-save-actions">
+          <button class="small-button" type="button" :disabled="visualizationSaving" @click="saveVisualizations('current')">保存当前图片</button>
+          <button class="small-button primary-button" type="button" :disabled="visualizationSaving" @click="saveVisualizations('all')">保存全部图片</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="assetReader.visible" class="file-browser-backdrop" @click.self="closeAssetReader">
+      <div class="file-browser-dialog">
+        <div class="file-browser-dialog-header">
+          <div>
+            <p class="eyebrow">File System</p>
+            <h3>Read {{ assetReader.kind === "mapping" ? "响应映射" : "请求配置" }} JSON</h3>
+          </div>
+          <button class="small-button" type="button" @click="closeAssetReader">Close</button>
+        </div>
+
+        <FileSystemTree
+          :root-node="rootNode"
+          :selected-path="assetReader.selectedPath"
+          title="JSON Files"
+          eyebrow="Project Root"
+          loading-message="Loading..."
+          :filter-loader="fetchJsonOnlyChildren"
+          @refresh="reloadRoot"
+          @select="selectAssetPath"
+          @toggle="toggleNode"
+          @load-more="loadMoreChildren"
+        />
+
+        <div class="file-browser-dialog-footer">
+          <div class="file-browser-path-preview">
+            <span>Selected</span>
+            <strong>{{ assetReader.selectedPath || "None" }}</strong>
+          </div>
+          <button class="small-button primary-button" type="button" :disabled="!assetReader.selectedPath" @click="readSelectedAsset">
+            Load
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import FileSystemTree from "./components/FileSystemTree.vue";
+import GroupedCollectionSidebar from "./components/GroupedCollectionSidebar.vue";
+import JsonFieldBuilder from "./components/JsonFieldBuilder.vue";
+import PostConfigEditor from "./components/PostConfigEditor.vue";
+import ResponseMappingEditor from "./components/ResponseMappingEditor.vue";
+
+const directoryPageSize = 20;
+const ungroupedLabel = "Ungrouped";
+const deletedGroupLabel = "Deleted";
+
+const baseRequestTabs = [
+  { id: "header", label: "Header" },
+  { id: "body", label: "Body" },
+  { id: "response", label: "Response" },
+  { id: "mapping", label: "响应映射" },
+  { id: "post-config", label: "请求配置" },
+];
+
+const responseTabs = [
+  { id: "raw-response", label: "原始响应" },
+  { id: "parsed-result", label: "解析结果" },
+  { id: "image-preview", label: "图片预览" },
+  { id: "annotation-conversion", label: "标注转换" },
+];
+
+const activeRequestTab = ref("header");
+const activeResponseTab = ref("raw-response");
+const previewMode = ref("pred");
+const gtFormat = ref("yolo");
+const gtLabelDir = ref("");
+const gtNames = ref([]);
+const gtNamesDraft = ref("");
+const showGTNamesDialog = ref(false);
+const gtGenerating = ref(false);
+const visualizationSaving = ref(false);
+const visualizationSaveError = ref("");
+const selectedImagePath = ref("");
+const responseStatusFilter = ref("all");
+const responseQueue = ref([]);
+const queueLoading = ref(false);
+const runningAll = ref(false);
+const responseLeftPercent = ref(64);
+const activePath = ref("");
+const uploadSelectionPath = ref("");
+const uploadParentPath = ref("/data/datasets");
+const showFileBrowser = ref(false);
+const sidebarCollapsed = ref(false);
+const activeWorkspaceView = ref("request");
+const pipelineItems = ref([]);
+const pipelineGroups = ref([]);
+const assetSavingKey = ref("");
+const savingPipeline = ref(false);
+const persistedPipelineName = ref("");
+const formError = ref("");
+const formSuccess = ref("");
+const runError = ref("");
+const runResult = ref(null);
+const headerTemplate = ref({});
+const bodyTemplate = ref({});
+const responseTemplate = ref({});
+const mappingModel = ref(createDefaultMappingModel());
+const postConfigModel = ref(createDefaultPostConfig());
+const savedAssetTexts = reactive({
+  header: "",
+  body: "",
+  response: "",
+  mapping: "",
+  post_config: "",
+});
+
+const assetReader = reactive({
+  visible: false,
+  kind: "mapping",
+  selectedPath: "",
+});
+
+const resultsBrowser = reactive({
+  visible: false,
+  selectedPath: "",
+});
+
+const resultsRootNode = ref(null);
+const gtRootNode = ref(null);
+
+const gtBrowser = reactive({ visible: false, selectedPath: "" });
+const visualizationSaveDialog = reactive({ visible: false });
+
+const editor = reactive(createEmptyEditor());
+
+const rootNode = ref(
+  createTreeNode({
+    name: "/data",
+    path: "/data",
+    type: "directory",
+    hasChildren: true,
+  }),
+);
+
+const selectedResult = computed(() =>
+  responseQueue.value.find((item) => item.imagePath === selectedImagePath.value) || null,
+);
+
+const currentVisualizationPath = computed(() => {
+  const item = selectedResult.value;
+  if (!item) return "";
+  return previewMode.value === "pred"
+    ? item.predCachePath || item.predSavedPath || ""
+    : item.gtCachePath || item.gtSavedPath || "";
+});
+
+const gtPreviewMessage = computed(() => {
+  if (!gtNames.value.length) return "请先填写 GT 类别名称。";
+  if (!gtLabelDir.value) return "请选择 GT 标注文件夹。";
+  return selectedResult.value?.gtError || "当前图片没有匹配的 GT 标注。";
+});
+
+const filteredResponseQueue = computed(() =>
+  responseStatusFilter.value === "all"
+    ? responseQueue.value
+    : responseQueue.value.filter((item) => item.status === responseStatusFilter.value),
+);
+
+const selectedResponseCount = computed(() => responseQueue.value.filter((item) => item.selected).length);
+
+const filteredSelectedCount = computed(() =>
+  filteredResponseQueue.value.filter((item) => item.selected).length,
+);
+
+const filteredSelectAllChecked = computed(() =>
+  filteredResponseQueue.value.length > 0 && filteredSelectedCount.value === filteredResponseQueue.value.length,
+);
+
+const filteredSelectAllIndeterminate = computed(() =>
+  filteredSelectedCount.value > 0 && filteredSelectedCount.value < filteredResponseQueue.value.length,
+);
+
+const responseGridStyle = computed(() => ({
+  gridTemplateColumns: `minmax(360px, ${responseLeftPercent.value}fr) 8px minmax(320px, ${100 - responseLeftPercent.value}fr)`,
+}));
+
+const responseStatusCounts = computed(() =>
+  responseQueue.value.reduce(
+    (counts, item) => {
+      counts[item.status] += 1;
+      return counts;
+    },
+    { new: 0, success: 0, failed: 0 },
+  ),
+);
+
+
+const collectionGroups = computed(() => {
+  const groupsMap = new Map();
+  for (const group of pipelineGroups.value) {
+    groupsMap.set(group.name, []);
+  }
+  if (!groupsMap.has(ungroupedLabel)) {
+    groupsMap.set(ungroupedLabel, []);
+  }
+  if (!groupsMap.has(deletedGroupLabel)) {
+    groupsMap.set(deletedGroupLabel, []);
+  }
+  for (const item of pipelineItems.value) {
+    const groupName = item.groupName || ungroupedLabel;
+    if (!groupsMap.has(groupName)) {
+      groupsMap.set(groupName, []);
+    }
+    groupsMap.get(groupName).push({
+      key: item.name,
+      label: item.displayName,
+      subtitle: item.name,
+      badge: item.method,
+      badgeClass: methodClass(item.method),
+      raw: item,
+    });
+  }
+  const groupEntries = Array.from(groupsMap.entries()).sort(([leftName], [rightName]) => {
+    if (leftName === ungroupedLabel) return -1;
+    if (rightName === ungroupedLabel) return 1;
+    if (leftName === deletedGroupLabel) return 1;
+    if (rightName === deletedGroupLabel) return -1;
+    return leftName.localeCompare(rightName, undefined, { numeric: true, sensitivity: "base" });
+  });
+  return groupEntries.map(([name, items]) => ({
+    name,
+    items,
+    canRename: name !== ungroupedLabel && name !== deletedGroupLabel,
+    canDelete: name !== ungroupedLabel && name !== deletedGroupLabel,
+    isTrash: name === deletedGroupLabel,
+  }));
+});
+
+const savedBodyJson = computed(() => parseSavedText(savedAssetTexts.body));
+const savedResponseJson = computed(() => parseSavedText(savedAssetTexts.response));
+const jsonDependencyReady = computed(
+  () => hasJsonContent(savedBodyJson.value) && hasJsonContent(savedResponseJson.value),
+);
+
+const requestTabs = computed(() =>
+  baseRequestTabs.map((tab) => {
+    if (tab.id === "mapping" || tab.id === "post-config") {
+      return {
+        ...tab,
+        disabled: !jsonDependencyReady.value,
+        disabledReason: "Body JSON and Response JSON are required first.",
+      };
+    }
+    return { ...tab, disabled: false, disabledReason: "" };
+  }),
+);
+
+const bodyFieldPathOptions = computed(() => {
+  return collectObjectPaths(hasJsonContent(bodyTemplate.value) ? bodyTemplate.value : savedBodyJson.value);
+});
+const responseMappingPathOptions = computed(() => {
+  return collectResponseMappingPaths(
+    hasJsonContent(responseTemplate.value) ? responseTemplate.value : savedResponseJson.value,
+    mappingModel.value,
+  );
+});
+
+const normalizedParsedResult = computed(() => normalizeParsedResult(selectedResult.value?.parsed, mappingModel.value));
+
+watch(jsonDependencyReady, (ready) => {
+  if (!ready && (activeRequestTab.value === "mapping" || activeRequestTab.value === "post-config")) {
+    activeRequestTab.value = hasJsonContent(savedBodyJson.value) ? "response" : "body";
+  }
+});
+
+function createEmptyEditor() {
+  return {
+    name: "",
+    displayName: "",
+    groupName: ungroupedLabel,
+    url: "",
+    method: "POST",
+    transport: "http",
+    inputPath: "",
+    imageFieldPath: "image",
+    imageSource: "base64",
+    assetPaths: {},
+    connectTimeout: 3,
+    readTimeout: 30,
+  };
+}
+
+function createDefaultMappingModel() {
+  return {
+    collectionPath: "",
+    itemPath: "",
+    labelPath: null,
+    classIdPath: null,
+    confPath: null,
+    bboxPath: null,
+    bboxPaths: [null, null, null, null],
+    bboxInputMode: "list",
+    bboxCoordinateType: "xyxy",
+    bboxIsCenter: false,
+    bboxCast: "float",
+    plotFields: ["label", "conf"],
+    extraFields: [],
+  };
+}
+
+function createDefaultPostConfig() {
+  return {
+    connectTimeout: 3,
+    readTimeout: 30,
+    placeholderPaths: {
+      timestamp: null,
+      image_b64: null,
+      image_width: null,
+      image_height: null,
+    },
+    placeholderTypes: {
+      timestamp: "int",
+      image_b64: "string",
+      image_width: "int",
+      image_height: "int",
+    },
+  };
+}
+
+function createTreeNode(node) {
+  return {
+    ...node,
+    expanded: false,
+    loading: false,
+    loadingMore: false,
+    error: "",
+    children: [],
+    childrenLoaded: node.childrenLoaded ?? false,
+    childrenOffset: node.childrenOffset ?? 0,
+    hasMoreChildren: node.hasMoreChildren ?? false,
+  };
+}
+
+function switchRequestTab(tab) {
+  if (tab.disabled) {
+    formError.value = tab.disabledReason;
+    return;
+  }
+  formError.value = "";
+  activeRequestTab.value = tab.id;
+}
+
+function resetEditor(data = null, hydrateSaved = false) {
+  const nextEditor = data || createEmptyEditor();
+  persistedPipelineName.value = hydrateSaved ? nextEditor.name || "" : "";
+  Object.assign(editor, {
+    ...createEmptyEditor(),
+    ...nextEditor,
+    groupName: nextEditor.groupName || ungroupedLabel,
+  });
+  headerTemplate.value = nextEditor.headerTemplate || {};
+  const migratedBody = migrateDynamicBodyPlaceholders(nextEditor.bodyTemplate || {});
+  bodyTemplate.value = nextEditor.bodyTemplate || {};
+  responseTemplate.value = nextEditor.templateInput || {};
+  mappingModel.value = mappingFromResponseMapping(nextEditor.responseMapping || {});
+  postConfigModel.value = mergeDetectedPostConfig(
+    normalizePostConfig(nextEditor.postConfig, nextEditor.connectTimeout, nextEditor.readTimeout),
+    migratedBody,
+  );
+  const assetPaths = nextEditor.assetPaths || {};
+  savedAssetTexts.header = hydrateSaved && assetPaths.header ? stringify(headerTemplate.value) : "";
+  savedAssetTexts.body = hydrateSaved && assetPaths.body ? stringify(bodyTemplate.value) : "";
+  savedAssetTexts.response = hydrateSaved && assetPaths.response ? stringify(responseTemplate.value) : "";
+  savedAssetTexts.mapping = hydrateSaved && assetPaths.mapping ? stringify(mappingToStorage(mappingModel.value)) : "";
+  savedAssetTexts.post_config = hydrateSaved && assetPaths.post_config ? stringify(postConfigModel.value) : "";
+}
+
+const dynamicBodyPlaceholders = {
+  image_base64: { key: "image_b64", type: "string", emptyValue: "" },
+  image_b64: { key: "image_b64", type: "string", emptyValue: "" },
+  unix_timestamp: { key: "timestamp", type: "int", emptyValue: 0 },
+  timestamp: { key: "timestamp", type: "int", emptyValue: 0 },
+  image_width: { key: "image_width", type: "int", emptyValue: 0 },
+  image_height: { key: "image_height", type: "int", emptyValue: 0 },
+};
+
+function migrateDynamicBodyPlaceholders(source) {
+  const placeholderPaths = {};
+  const placeholderTypes = {};
+  const visit = (value, path = "") => {
+    if (Array.isArray(value)) {
+      return value.map((item, index) => visit(item, path ? path + "." + index : String(index)));
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, visit(item, path ? path + "." + key : key)]),
+      );
+    }
+    if (typeof value !== "string") {
+      return value;
+    }
+    const match = value.match(/^\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}$/);
+    const config = match ? dynamicBodyPlaceholders[match[1]] : null;
+    if (!config) {
+      return value;
+    }
+    if (!placeholderPaths[config.key]) {
+      placeholderPaths[config.key] = path;
+      placeholderTypes[config.key] = config.type;
+    }
+    return Array.isArray(config.emptyValue) ? [...config.emptyValue] : config.emptyValue;
+  };
+  return { template: visit(source), placeholderPaths, placeholderTypes };
+}
+
+function mergeDetectedPostConfig(current, detected) {
+  const normalized = normalizePostConfig(current);
+  return {
+    ...normalized,
+    placeholderPaths: {
+      ...normalized.placeholderPaths,
+      ...detected.placeholderPaths,
+    },
+    placeholderTypes: {
+      ...normalized.placeholderTypes,
+      ...detected.placeholderTypes,
+    },
+  };
+}
+
+function mappingFromResponseMapping(value) {
+  const plotFields = Array.isArray(value?.plotFields) ? value.plotFields : ["label", "conf"];
+  return {
+    ...createDefaultMappingModel(),
+    ...value,
+    plotFields,
+    collectionPath: value?.collectionPaths?.[0] || value?.collectionPath || "",
+    itemPath: value?.itemPath || "",
+    extraFields: (value?.extraFields || []).map((field, index) => ({
+      id: `extra-${index}-${field.name || "field"}`,
+      name: field.name || "",
+      path: field.path || "",
+      cast: field.cast || "string",
+      plot: plotFields.includes(field.name),
+    })),
+  };
+}
+
+function normalizePostConfig(value, connectTimeout, readTimeout) {
+  const defaults = createDefaultPostConfig();
+  const supportedKeys = Object.keys(defaults.placeholderPaths);
+  return {
+    ...defaults,
+    ...(value || {}),
+    connectTimeout: Number(value?.connectTimeout ?? connectTimeout ?? 3),
+    readTimeout: Number(value?.readTimeout ?? readTimeout ?? 30),
+    placeholderPaths: Object.fromEntries(
+      supportedKeys.map((key) => [key, value?.placeholderPaths?.[key] ?? defaults.placeholderPaths[key]]),
+    ),
+    placeholderTypes: Object.fromEntries(
+      supportedKeys.map((key) => [key, value?.placeholderTypes?.[key] ?? defaults.placeholderTypes[key]]),
+    ),
+  };
+}
+
+async function fetchChildren(path, offset = 0, filter = "") {
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(directoryPageSize),
+  });
+  if (path) {
+    params.set("path", path);
+  }
+  if (filter) {
+    params.set("filter", filter);
+  }
+  const response = await fetch(`/api/tree?${params.toString()}`);
+  if (!response.ok) {
+    throw await responseToError(response, "Failed to read directory");
+  }
+  return response.json();
+}
+
+async function fetchFilteredChildren(path, filter) {
+  const children = [];
+  let offset = 0;
+  let hasMore = true;
+  while (hasMore) {
+    const data = await fetchChildren(path, offset, filter);
+    children.push(...data.children.map(createTreeNode));
+    offset = data.offset + data.children.length;
+    hasMore = data.hasMore && data.children.length > 0;
+  }
+  return children;
+}
+
+async function fetchJsonOnlyChildren(path, filter = "") {
+  const children = await fetchFilteredChildren(path, filter);
+  return children.filter((item) => item.type === "directory" || item.name.toLowerCase().endsWith(".json"));
+}
+
+async function loadChildren(node, force = false) {
+  if (node.type !== "directory" || node.loading) {
+    return;
+  }
+  if (node.childrenLoaded && !force) {
+    return;
+  }
+  node.loading = true;
+  node.error = "";
+  try {
+    const data = await fetchChildren(node.path, force ? 0 : node.childrenOffset);
+    node.path = data.path;
+    if (node === rootNode.value) {
+      node.name = "/data";
+    }
+    node.children = data.children.map(createTreeNode);
+    node.childrenOffset = data.offset + data.children.length;
+    node.hasMoreChildren = data.hasMore;
+    node.childrenLoaded = true;
+  } catch (error) {
+    node.error = error.message;
+  } finally {
+    node.loading = false;
+  }
+}
+
+async function loadMoreChildren(node) {
+  if (node.type !== "directory" || node.loadingMore || !node.hasMoreChildren) {
+    return;
+  }
+  node.loadingMore = true;
+  node.error = "";
+  try {
+    const data = await fetchChildren(node.path, node.childrenOffset);
+    node.children.push(...data.children.map(createTreeNode));
+    node.childrenOffset = data.offset + data.children.length;
+    node.hasMoreChildren = data.hasMore;
+  } catch (error) {
+    node.error = error.message;
+  } finally {
+    node.loadingMore = false;
+  }
+}
+
+async function toggleNode(node) {
+  if (node.type !== "directory") {
+    return;
+  }
+  node.expanded = !node.expanded;
+  if (node.expanded) {
+    await loadChildren(node);
+  }
+}
+
+function selectUploadParent(node) {
+  uploadSelectionPath.value = node.path;
+  uploadParentPath.value = node.type === "directory" ? node.path : parentDirectoryPath(node.path);
+}
+
+async function handleUploadComplete(payload) {
+  const uploadedItems = payload?.items || [];
+  if (!uploadedItems.length) return;
+
+  const directoryNode = findTreeNode(rootNode.value, payload.directory);
+  if (directoryNode) {
+    directoryNode.expanded = true;
+    directoryNode.childrenLoaded = false;
+    await loadChildren(directoryNode, true);
+    for (const item of uploadedItems) ensureUploadedPathVisible(directoryNode, item.path);
+  } else {
+    await reloadRoot();
+  }
+
+  const lastUploadedPath = uploadedItems[uploadedItems.length - 1]?.path;
+  if (lastUploadedPath) {
+    uploadSelectionPath.value = lastUploadedPath;
+    uploadParentPath.value = parentDirectoryPath(lastUploadedPath);
+  }
+}
+
+function findTreeNode(node, path) {
+  if (!node) return null;
+  if (normalizeFilesystemPath(node.path) === normalizeFilesystemPath(path)) return node;
+  for (const child of node.children || []) {
+    const found = findTreeNode(child, path);
+    if (found) return found;
+  }
+  return null;
+}
+
+function ensureUploadedPathVisible(directoryNode, uploadedPath) {
+  const directoryPath = normalizeFilesystemPath(directoryNode.path);
+  const fullPath = normalizeFilesystemPath(uploadedPath);
+  if (!fullPath.startsWith(directoryPath + "/")) return;
+
+  const parts = fullPath.slice(directoryPath.length + 1).split("/").filter(Boolean);
+  let current = directoryNode;
+  parts.forEach((part, index) => {
+    const nodePath = current.path.replace(/[\\/]$/, "") + "/" + part;
+    let child = (current.children || []).find((item) => normalizeFilesystemPath(item.path) === normalizeFilesystemPath(nodePath));
+    if (!child) {
+      child = createTreeNode({ name: part, path: nodePath, type: index === parts.length - 1 ? "file" : "directory", hasChildren: index < parts.length - 1 });
+      current.children.push(child);
+      current.children.sort((left, right) => (left.type !== right.type ? (left.type === "directory" ? -1 : 1) : left.name.localeCompare(right.name, undefined, { numeric: true })));
+    }
+    if (child.type === "directory") child.expanded = true;
+    current = child;
+  });
+}
+
+function normalizeFilesystemPath(path) {
+  let normalized = String(path || "").split("\\").join("/");
+  while (normalized.length > 1 && normalized.endsWith("/")) normalized = normalized.slice(0, -1);
+  return normalized;
+}
+
+function openGTNamesDialog() {
+  gtNamesDraft.value = gtNames.value.join("\n");
+  showGTNamesDialog.value = true;
+}
+
+async function saveGTNames() {
+  gtNames.value = gtNamesDraft.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+  showGTNamesDialog.value = false;
+  await generateGTVisualizations();
+}
+
+async function openGTBrowser() {
+  gtBrowser.visible = true;
+  gtBrowser.selectedPath = gtLabelDir.value;
+  gtRootNode.value = createTreeNode({ name: "datasets", path: "/data/datasets", type: "directory", hasChildren: true });
+  gtRootNode.value.expanded = true;
+  await loadChildren(gtRootNode.value, true);
+}
+
+function closeGTBrowser() {
+  gtBrowser.visible = false;
+}
+
+function highlightGTPath(node) {
+  gtBrowser.selectedPath = node.type === "directory" ? node.path : parentDirectoryPath(node.path);
+}
+
+async function selectGTLabelFolder(node) {
+  if (node.type !== "directory") return;
+  gtLabelDir.value = node.path;
+  gtBrowser.selectedPath = node.path;
+  gtBrowser.visible = false;
+  await generateGTVisualizations();
+}
+
+async function reloadGTRoot() {
+  if (!gtRootNode.value) return;
+  gtRootNode.value.childrenLoaded = false;
+  gtRootNode.value.expanded = true;
+  await loadChildren(gtRootNode.value, true);
+}
+
+async function generateGTVisualizations() {
+  if (!editor.name || !gtLabelDir.value || !gtNames.value.length || !responseQueue.value.length) return;
+  gtGenerating.value = true;
+  runError.value = "";
+  try {
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/visualizations/gt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imagePaths: responseQueue.value.map((item) => item.imagePath),
+        labelDir: gtLabelDir.value,
+        format: gtFormat.value,
+        names: gtNames.value,
+      }),
+    });
+    if (!response.ok) throw await responseToError(response, "Failed to generate GT visualizations");
+    const data = await response.json();
+    const resultMap = new Map((data.items || []).map((item) => [item.imagePath, item]));
+    responseQueue.value = responseQueue.value.map((item) => {
+      const result = resultMap.get(item.imagePath);
+      return result ? { ...item, gtCachePath: result.cachePath || null, gtSavedPath: null, gtError: result.error || "" } : item;
+    });
+  } catch (error) {
+    runError.value = error.message;
+  } finally {
+    gtGenerating.value = false;
+  }
+}
+
+function openVisualizationSaveDialog() {
+  visualizationSaveError.value = "";
+  visualizationSaveDialog.visible = true;
+}
+
+function closeVisualizationSaveDialog() {
+  visualizationSaveDialog.visible = false;
+  visualizationSaveError.value = "";
+}
+
+async function saveVisualizations(scope) {
+  const cacheKey = previewMode.value === "pred" ? "predCachePath" : "gtCachePath";
+  const sourceItems = scope === "current" ? [selectedResult.value] : responseQueue.value;
+  const imagePaths = sourceItems.filter((item) => item?.[cacheKey]).map((item) => item.imagePath);
+  if (!imagePaths.length) {
+    visualizationSaveError.value = "没有可保存的缓存标注图片。";
+    return;
+  }
+
+  visualizationSaving.value = true;
+  visualizationSaveError.value = "";
+  try {
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/visualizations/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: previewMode.value, imagePaths, labelDir: previewMode.value === "gt" ? gtLabelDir.value : null }),
+    });
+    if (!response.ok) throw await responseToError(response, "Failed to save visualizations");
+    const data = await response.json();
+    const resultMap = new Map((data.items || []).map((item) => [item.imagePath, item]));
+    const savedKey = previewMode.value === "pred" ? "predSavedPath" : "gtSavedPath";
+    responseQueue.value = responseQueue.value.map((item) => {
+      const result = resultMap.get(item.imagePath);
+      return result?.savedPath ? { ...item, [savedKey]: result.savedPath } : item;
+    });
+    const failed = (data.items || []).filter((item) => item.error);
+    if (failed.length) {
+      visualizationSaveError.value = failed.map((item) => baseName(item.imagePath) + ": " + item.error).join("; ");
+    } else {
+      closeVisualizationSaveDialog();
+    }
+  } catch (error) {
+    visualizationSaveError.value = error.message;
+  } finally {
+    visualizationSaving.value = false;
+  }
+}
+
+async function selectPath(node) {
+  activePath.value = node.path;
+  editor.inputPath = node.path;
+  showFileBrowser.value = false;
+  await loadResponseQueue(node.path);
+}
+
+function selectAssetPath(node) {
+  assetReader.selectedPath = node.path;
+}
+
+async function reloadRoot() {
+  rootNode.value.childrenLoaded = false;
+  rootNode.value.expanded = true;
+  await loadChildren(rootNode.value, true);
+}
+
+async function openFileBrowser() {
+  showFileBrowser.value = true;
+  if (!rootNode.value.childrenLoaded) {
+    rootNode.value.expanded = true;
+    await loadChildren(rootNode.value);
+  }
+}
+
+function closeFileBrowser() {
+  showFileBrowser.value = false;
+}
+
+async function openResultsBrowser() {
+  if (!editor.name) {
+    return;
+  }
+  resultsBrowser.visible = true;
+  resultsBrowser.selectedPath = "";
+  resultsRootNode.value = createTreeNode({
+    name: editor.name,
+    path: `/data/fuxing/results/${editor.name}/post`,
+    type: "directory",
+    hasChildren: true,
+  });
+  resultsRootNode.value.expanded = true;
+  await loadResultsRootDirectories();
+}
+
+function closeResultsBrowser() {
+  resultsBrowser.visible = false;
+  resultsBrowser.selectedPath = "";
+}
+
+function selectResultsPath(node) {
+  if (node.type === "directory") {
+    resultsBrowser.selectedPath = node.path;
+  }
+}
+
+async function loadResultsRootDirectories() {
+  if (!resultsRootNode.value) {
+    return;
+  }
+  resultsRootNode.value.loading = true;
+  resultsRootNode.value.error = "";
+  try {
+    const children = await fetchFilteredChildren(resultsRootNode.value.path, "");
+    resultsRootNode.value.children = children
+      .filter((item) => item.type === "directory")
+      .sort((left, right) => right.name.localeCompare(left.name, undefined, { numeric: true }));
+    resultsRootNode.value.childrenLoaded = true;
+    resultsRootNode.value.childrenOffset = resultsRootNode.value.children.length;
+    resultsRootNode.value.hasMoreChildren = false;
+  } catch (error) {
+    resultsRootNode.value.error = error.message;
+  } finally {
+    resultsRootNode.value.loading = false;
+  }
+}
+
+async function reloadResultsRoot() {
+  await loadResultsRootDirectories();
+}
+
+async function loadSelectedResultsFolder() {
+  if (!resultsBrowser.selectedPath) {
+    return;
+  }
+  await loadSavedRunResults(editor.inputPath, resultsBrowser.selectedPath);
+  closeResultsBrowser();
+}
+
+function openAssetReader(kind) {
+  assetReader.visible = true;
+  assetReader.kind = kind;
+  assetReader.selectedPath = editor.assetPaths?.[kind] || "";
+}
+
+function closeAssetReader() {
+  assetReader.visible = false;
+  assetReader.selectedPath = "";
+}
+
+async function readSelectedAsset() {
+  try {
+    const response = await fetch(`/api/pipelines/assets?${new URLSearchParams({ path: assetReader.selectedPath }).toString()}`);
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to read asset");
+    }
+    const data = await response.json();
+    if (assetReader.kind === "mapping") {
+      mappingModel.value = mappingFromResponseMapping(data.content || {});
+      savedAssetTexts.mapping = data.text || stringify(data.content);
+    } else {
+      postConfigModel.value = normalizePostConfig(data.content || {}, editor.connectTimeout, editor.readTimeout);
+      savedAssetTexts.post_config = data.text || stringify(data.content);
+    }
+    editor.assetPaths = {
+      ...(editor.assetPaths || {}),
+      [assetReader.kind]: data.path || assetReader.selectedPath || null,
+    };
+    formSuccess.value = "Config loaded successfully";
+    closeAssetReader();
+  } catch (error) {
+    formError.value = error.message;
+    window.alert(`Failed to load pipeline: ${error.message}`);
+  }
+}
+
+function createNewPipeline() {
+  formError.value = "";
+  formSuccess.value = "";
+  runError.value = "";
+  runResult.value = null;
+  responseQueue.value = [];
+  selectedImagePath.value = "";
+  resetEditor({ ...createEmptyEditor(), inputPath: editor.inputPath }, false);
+}
+
+async function loadPipelineList() {
+  const response = await fetch("/api/pipelines");
+  if (!response.ok) {
+    throw await responseToError(response, "Failed to read pipeline list");
+  }
+  const data = await response.json();
+  pipelineItems.value = data.items || [];
+  pipelineGroups.value = data.groups || [];
+}
+
+async function loadPipeline(itemOrName) {
+  formError.value = "";
+  formSuccess.value = "";
+  const name = typeof itemOrName === "string" ? itemOrName : itemOrName?.name;
+  if (!name) {
+    return;
+  }
+  try {
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(name)}`);
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to load pipeline");
+    }
+    const data = await response.json();
+    const currentImagePath = editor.inputPath;
+    resetEditor({
+      ...data,
+      inputPath: currentImagePath,
+    }, true);
+    if (editor.inputPath) {
+      await loadResponseQueue(editor.inputPath);
+    }
+  } catch (error) {
+    formError.value = error.message;
+  }
+}
+
+async function submitCreateGroup(rawName) {
+  const name = String(rawName || "").trim();
+  if (!name) {
+    return;
+  }
+  const groupNameError = validateGroupName(name);
+  if (groupNameError) {
+    formError.value = groupNameError;
+    window.alert(groupNameError);
+    return;
+  }
+  try {
+    const response = await fetch("/api/pipelines/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to create group");
+    }
+    const data = await response.json();
+    pipelineItems.value = data.items || [];
+    pipelineGroups.value = data.groups || [];
+  } catch (error) {
+    formError.value = error.message;
+  }
+}
+
+async function submitRenameGroup(payload) {
+  const groupNameError = validateGroupName(payload.nextName);
+  if (groupNameError) {
+    formError.value = groupNameError;
+    window.alert(groupNameError);
+    return;
+  }
+  try {
+    const response = await fetch(`/api/pipelines/groups/${encodeURIComponent(payload.name)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: payload.nextName }),
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to rename group");
+    }
+    const data = await response.json();
+    pipelineItems.value = data.items || [];
+    pipelineGroups.value = data.groups || [];
+    if (editor.groupName === payload.name) {
+      editor.groupName = payload.nextName;
+    }
+  } catch (error) {
+    formError.value = error.message;
+  }
+}
+
+async function deleteGroup(name) {
+  if (!window.confirm(`Delete group "${name}"? Pipelines inside it will move to Ungrouped.`)) {
+    return;
+  }
+  try {
+    const response = await fetch(`/api/pipelines/groups/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to delete group");
+    }
+    const data = await response.json();
+    pipelineItems.value = data.items || [];
+    pipelineGroups.value = data.groups || [];
+    if (editor.groupName === name) {
+      editor.groupName = ungroupedLabel;
+    }
+  } catch (error) {
+    formError.value = error.message;
+  }
+}
+
+async function submitMovePipeline(payload) {
+  try {
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(payload.item.name)}/group`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupName: payload.targetGroup }),
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to move pipeline");
+    }
+    const data = await response.json();
+    pipelineItems.value = data.items || [];
+    pipelineGroups.value = data.groups || [];
+    if (editor.name === payload.item.name) {
+      editor.groupName = payload.targetGroup;
+    }
+  } catch (error) {
+    formError.value = error.message;
+  }
+}
+
+async function handleCollectionDeleteItem(payload) {
+  const item = payload?.item;
+  const permanent = Boolean(payload?.permanent);
+  if (!item?.name) {
+    return;
+  }
+  const prompt = permanent
+    ? `Delete "${item.displayName}" permanently?`
+    : `Move "${item.displayName}" to Deleted?`;
+  if (!window.confirm(prompt)) {
+    return;
+  }
+  try {
+    const suffix = permanent ? "?permanent=true" : "";
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(item.name)}${suffix}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to delete pipeline");
+    }
+    const data = await response.json();
+    pipelineItems.value = data.items || [];
+    pipelineGroups.value = data.groups || [];
+    if (editor.name === item.name && permanent) {
+      createNewPipeline();
+    } else if (editor.name === item.name) {
+      editor.groupName = deletedGroupLabel;
+    }
+  } catch (error) {
+    formError.value = error.message;
+  }
+}
+
+async function saveJsonAsset(kind, payload) {
+  formError.value = "";
+  formSuccess.value = "";
+  if (!ensureDisplayContext()) {
+    return;
+  }
+  let contentToSave = payload;
+  let migratedBody = null;
+  if (kind === "body") {
+    migratedBody = migrateDynamicBodyPlaceholders(payload);
+    contentToSave = migratedBody.template;
+    postConfigModel.value = mergeDetectedPostConfig(postConfigModel.value, migratedBody);
+  }
+  assetSavingKey.value = kind;
+  try {
+    const response = await fetch("/api/pipelines/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pipelineName: editor.name || null,
+        groupName: editor.groupName,
+        displayName: editor.displayName,
+        fileName: kind,
+        content: contentToSave,
+      }),
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to save JSON asset");
+    }
+    const data = await response.json();
+    const savedContent = data.content || contentToSave;
+    if (kind === "header") headerTemplate.value = savedContent;
+    if (kind === "body") bodyTemplate.value = savedContent;
+    if (kind === "response") responseTemplate.value = savedContent;
+    savedAssetTexts[kind] = data.text || stringify(savedContent);
+    editor.assetPaths = {
+      ...(editor.assetPaths || {}),
+      [kind]: data.path || null,
+    };
+    formSuccess.value = kind === "body" && migratedBody && Object.keys(migratedBody.placeholderPaths).length
+      ? "body.json 已保存；自动识别的请求配置尚未保存"
+      : `${kind}.json saved`;
+  } catch (error) {
+    formError.value = error.message;
+  } finally {
+    assetSavingKey.value = "";
+  }
+}
+
+async function saveMappingAsset() {
+  formError.value = "";
+  formSuccess.value = "";
+  if (!ensureDisplayContext()) {
+    return;
+  }
+  if (!ensureJsonDependencyReady()) {
+    return;
+  }
+  assetSavingKey.value = "mapping";
+  const inferredMapping = inferMappingFromResponseTemplate(responseTemplate.value, mappingModel.value);
+  mappingModel.value = inferredMapping;
+  const payload = mappingToStorage(inferredMapping);
+  try {
+    const response = await fetch("/api/pipelines/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pipelineName: editor.name || null,
+        groupName: editor.groupName,
+        displayName: editor.displayName,
+        fileName: "mapping",
+        content: payload,
+      }),
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to save mapping");
+    }
+    const data = await response.json();
+    mappingModel.value = mappingFromResponseMapping(data.content || payload);
+    savedAssetTexts.mapping = data.text || stringify(data.content || payload);
+    editor.assetPaths = {
+      ...(editor.assetPaths || {}),
+      mapping: data.path || null,
+    };
+    formSuccess.value = "mapping.json saved";
+  } catch (error) {
+    formError.value = error.message;
+  } finally {
+    assetSavingKey.value = "";
+  }
+}
+
+async function savePostConfigAsset() {
+  formError.value = "";
+  formSuccess.value = "";
+  if (!ensureDisplayContext()) {
+    return;
+  }
+  if (!ensureJsonDependencyReady()) {
+    return;
+  }
+  assetSavingKey.value = "post_config";
+  try {
+    const response = await fetch("/api/pipelines/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pipelineName: editor.name || null,
+        groupName: editor.groupName,
+        displayName: editor.displayName,
+        fileName: "post_config",
+        content: postConfigModel.value,
+      }),
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to save post config");
+    }
+    const data = await response.json();
+    postConfigModel.value = normalizePostConfig(data.content || postConfigModel.value);
+    savedAssetTexts.post_config = data.text || stringify(data.content || postConfigModel.value);
+    editor.assetPaths = {
+      ...(editor.assetPaths || {}),
+      post_config: data.path || null,
+    };
+    formSuccess.value = "post_config.json saved";
+  } catch (error) {
+    formError.value = error.message;
+  } finally {
+    assetSavingKey.value = "";
+  }
+}
+
+async function savePipeline() {
+  formError.value = "";
+  formSuccess.value = "";
+  const pipelineNameError = validatePipelineName(editor.name);
+  if (pipelineNameError) {
+    formError.value = pipelineNameError;
+    window.alert(pipelineNameError);
+    return;
+  }
+  savingPipeline.value = true;
+  try {
+    const payload = buildPipelinePayload();
+    const response = await fetch("/api/pipelines", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to save pipeline");
+    }
+    const data = await response.json();
+    const currentImagePath = editor.inputPath;
+    resetEditor({ ...data.pipeline, inputPath: currentImagePath }, true);
+    formSuccess.value = data.message;
+    await loadPipelineList();
+  } catch (error) {
+    formError.value = error.message;
+  } finally {
+    savingPipeline.value = false;
+  }
+}
+
+function buildPipelinePayload() {
+  const imageFieldPath =
+    postConfigModel.value.placeholderPaths?.image_b64 ||
+    editor.imageFieldPath ||
+    bodyFieldPathOptions.value[0] ||
+    "image";
+  const inferredMapping = inferMappingFromResponseTemplate(responseTemplate.value, mappingModel.value);
+  return {
+    ...editor,
+    originalName: persistedPipelineName.value || null,
+    imageDirectory: null,
+    headerTemplate: headerTemplate.value,
+    bodyTemplate: bodyTemplate.value,
+    responseMapping: mappingToStorage(inferredMapping),
+    defaultHeaders: {},
+    defaultBody: {},
+    defaultExtra: {},
+    templateInput: responseTemplate.value,
+    postConfig: postConfigModel.value,
+    imageFieldPath,
+    imageSource: "base64",
+    connectTimeout: postConfigModel.value.connectTimeout,
+    readTimeout: postConfigModel.value.readTimeout,
+  };
+}
+
+function mappingToStorage(model) {
+  return {
+    outputType: "detection",
+    collectionPaths: model.collectionPath ? [model.collectionPath] : [],
+    itemPath: model.itemPath || null,
+    labelPath: model.labelPath || null,
+    classIdPath: model.classIdPath || null,
+    confPath: model.confPath || null,
+    textPath: null,
+    bboxMode:
+      model.bboxInputMode === "fields"
+        ? model.bboxCoordinateType === "xywh"
+          ? "xywh_from_paths"
+          : "xyxy_from_paths"
+        : model.bboxCoordinateType === "xywh"
+          ? "xywh_to_xyxy"
+          : "passthrough",
+    bboxInputMode: model.bboxInputMode,
+    bboxCoordinateType: model.bboxCoordinateType,
+    bboxIsCenter: false,
+    bboxPath: model.bboxPath || null,
+    bboxPaths: (model.bboxPaths || []).map((item) => item || null),
+    bboxCast: "float",
+    names: [],
+    plotFields: [
+      ...["label", "class_id", "conf"].filter((field) => (model.plotFields || []).includes(field)),
+      ...(model.extraFields || [])
+        .filter((field) => field.plot && String(field.name || "").trim())
+        .map((field) => field.name.trim()),
+    ],
+    extraFields: (model.extraFields || [])
+      .filter((field) => String(field.name || "").trim())
+      .map((field) => ({
+        name: field.name.trim(),
+        path: field.path || null,
+        cast: field.cast === "string" ? null : field.cast,
+      })),
+  };
+}
+
+async function loadResponseQueue(path) {
+  const inputPath = String(path || "").trim();
+  runError.value = "";
+  runResult.value = null;
+  responseQueue.value = [];
+  selectedImagePath.value = "";
+  if (!inputPath) {
+    return;
+  }
+
+  queueLoading.value = true;
+  try {
+    const params = new URLSearchParams({ path: inputPath });
+    const response = await fetch(`/api/images/browse?${params.toString()}`);
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to list images");
+    }
+    const data = await response.json();
+    responseQueue.value = (data.images || []).map((image) => ({
+      name: image.name,
+      imagePath: image.path,
+      status: "new",
+      selected: false,
+      sending: false,
+      elapsedMs: null,
+      parsed: null,
+      rawResponse: null,
+      error: null,
+    }));
+    if (editor.name && responseQueue.value.length) {
+      await loadSavedRunResults(inputPath);
+    }
+    selectedImagePath.value = responseQueue.value[0]?.imagePath || "";
+  } catch (error) {
+    runError.value = error.message;
+  } finally {
+    queueLoading.value = false;
+  }
+}
+
+async function loadSavedRunResults(inputPath, runFolder = "") {
+  try {
+    const params = new URLSearchParams({ inputPath });
+    if (runFolder) {
+      params.set("runFolder", runFolder);
+    }
+    const response = await fetch(
+      `/api/pipelines/${encodeURIComponent(editor.name)}/results?${params.toString()}`,
+    );
+    if (!response.ok) {
+      throw await responseToError(response, "Failed to load saved results");
+    }
+    const data = await response.json();
+    applyRunItems(data.items || []);
+  } catch (error) {
+    runError.value = error.message;
+  }
+}
+
+function applyRunItems(items) {
+  const resultMap = new Map((items || []).map((item) => [item.imagePath, item]));
+  responseQueue.value = responseQueue.value.map((queueItem) => {
+    const result = resultMap.get(queueItem.imagePath);
+    if (!result) {
+      return queueItem;
+    }
+    return {
+      ...queueItem,
+      ...result,
+      status: result.ok ? "success" : "failed",
+      sending: false,
+    };
+  });
+}
+
+async function requestPipelineRun(inputPath, clearVisualizationCache = false) {
+  const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inputPath, saveResults: true, clearVisualizationCache }),
+  });
+  if (!response.ok) {
+    throw await responseToError(response, "Failed to run pipeline");
+  }
+  return response.json();
+}
+
+async function runAllImages() {
+  runError.value = "";
+  if (!editor.name) {
+    runError.value = "Save pipeline before running.";
+    return;
+  }
+  const selectedItems = responseQueue.value.filter((item) => item.selected);
+  if (!selectedItems.length) {
+    runError.value = "Select at least one image before sending.";
+    return;
+  }
+  const selectedPaths = new Set(selectedItems.map((item) => item.imagePath));
+  runningAll.value = true;
+  responseQueue.value = responseQueue.value.map((item) =>
+    selectedPaths.has(item.imagePath) ? { ...item, sending: true } : item,
+  );
+  const allItems = [];
+  try {
+    for (const [index, item] of selectedItems.entries()) {
+      try {
+        const data = await requestPipelineRun(item.imagePath, index === 0);
+        allItems.push(...(data.items || []));
+        applyRunItems(data.items);
+      } catch (error) {
+        const failedItem = {
+          imagePath: item.imagePath,
+          ok: false,
+          elapsedMs: null,
+          error: error.message,
+        };
+        allItems.push(failedItem);
+        applyRunItems([failedItem]);
+      }
+    }
+    runResult.value = { items: allItems };
+    selectedImagePath.value ||= selectedItems[0]?.imagePath || "";
+    activeResponseTab.value = "raw-response";
+  } finally {
+    responseQueue.value = responseQueue.value.map((item) => ({ ...item, sending: false }));
+    runningAll.value = false;
+  }
+}
+
+function setResponseSelected(imagePath, selected) {
+  responseQueue.value = responseQueue.value.map((item) =>
+    item.imagePath === imagePath ? { ...item, selected } : item,
+  );
+}
+
+function toggleFilteredSelection(selected) {
+  const visiblePaths = new Set(filteredResponseQueue.value.map((item) => item.imagePath));
+  responseQueue.value = responseQueue.value.map((item) =>
+    visiblePaths.has(item.imagePath) ? { ...item, selected } : item,
+  );
+}
+
+function startResponseResize(event) {
+  if (window.matchMedia("(max-width: 980px)").matches) {
+    return;
+  }
+  event.preventDefault();
+  const grid = event.currentTarget.parentElement;
+  const bounds = grid.getBoundingClientRect();
+  const handleMove = (moveEvent) => {
+    const percent = ((moveEvent.clientX - bounds.left) / bounds.width) * 100;
+    responseLeftPercent.value = Math.min(76, Math.max(42, percent));
+  };
+  const stopResize = () => {
+    window.removeEventListener("mousemove", handleMove);
+    window.removeEventListener("mouseup", stopResize);
+    document.body.classList.remove("response-column-resizing");
+  };
+  document.body.classList.add("response-column-resizing");
+  window.addEventListener("mousemove", handleMove);
+  window.addEventListener("mouseup", stopResize);
+}
+
+async function runSingleImage(item) {
+  if (!editor.name || item.sending) {
+    return;
+  }
+  runError.value = "";
+  selectedImagePath.value = item.imagePath;
+  responseQueue.value = responseQueue.value.map((queueItem) =>
+    queueItem.imagePath === item.imagePath ? { ...queueItem, sending: true } : queueItem,
+  );
+  try {
+    const data = await requestPipelineRun(item.imagePath, true);
+    applyRunItems(data.items);
+    activeResponseTab.value = "raw-response";
+  } catch (error) {
+    responseQueue.value = responseQueue.value.map((queueItem) =>
+      queueItem.imagePath === item.imagePath
+        ? { ...queueItem, status: "failed", sending: false, error: error.message }
+        : queueItem,
+    );
+    runError.value = error.message;
+  }
+}
+
+function normalizeParsedResult(parsed, mapping) {
+  if (!parsed) {
+    return null;
+  }
+  const template = {
+    bbox: null,
+    conf: null,
+    label: null,
+    class_id: null,
+  };
+  for (const field of mapping.extraFields || []) {
+    const key = String(field.name || "").trim();
+    if (key) {
+      template[key] = null;
+    }
+  }
+  const normalizeOne = (item) => {
+    const next = { ...template };
+    for (const key of Object.keys(next)) {
+      next[key] = item?.[key] ?? null;
+    }
+    return next;
+  };
+  return Array.isArray(parsed) ? parsed.map(normalizeOne) : normalizeOne(parsed);
+}
+
+function ensureDisplayContext() {
+  formError.value = "";
+  if (!editor.displayName || !editor.groupName) {
+    formError.value = "Display Name and Group are required before saving tab files.";
+    return false;
+  }
+  return true;
+}
+
+function ensureJsonDependencyReady() {
+  formError.value = "";
+  if (!jsonDependencyReady.value) {
+    formError.value = "请先保存 Body JSON 和 Response JSON，再编辑响应映射或请求配置。";
+    activeRequestTab.value = hasJsonContent(savedBodyJson.value) ? "response" : "body";
+    return false;
+  }
+  return true;
+}
+
+function hasJsonContent(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length);
+}
+
+function validatePipelineName(value) {
+  const name = String(value || "").trim();
+  if (name.length < 3 || name.length > 64) {
+    return "Pipeline Name must be 3-64 characters.";
+  }
+  if (!/^[a-z]/.test(name)) {
+    return "Pipeline Name must start with a lowercase letter.";
+  }
+  if (!/^[a-z][a-z0-9_-]{2,63}$/.test(name)) {
+    return "Pipeline Name only supports lowercase letters, numbers, _ and -.";
+  }
+  if (/[_-]$/.test(name)) {
+    return "Pipeline Name cannot end with _ or -.";
+  }
+  if (/__|--|_-|-_/.test(name)) {
+    return "Pipeline Name cannot contain consecutive separators.";
+  }
+  return "";
+}
+
+function validateGroupName(value) {
+  const error = validatePipelineName(value);
+  return error ? error.replaceAll("Pipeline Name", "Group Name") : "";
+}
+
+function inferMappingFromResponseTemplate(response, currentMapping) {
+  const next = {
+    ...currentMapping,
+    bboxPaths: [...(currentMapping.bboxPaths || [null, null, null, null])],
+    extraFields: [...(currentMapping.extraFields || [])],
+  };
+
+  const algoOutputs = response?.data?.algo_outputs;
+  const firstObject = Array.isArray(algoOutputs)
+    ? algoOutputs.find((item) => Array.isArray(item?.objectinfo))?.objectinfo?.[0]
+    : null;
+  if (firstObject && typeof firstObject === "object") {
+    if (!next.collectionPath || next.collectionPath === "data.outputs") {
+      next.collectionPath = "data.algo_outputs";
+    }
+    next.itemPath ||= "objectinfo";
+    next.bboxInputMode = "fields";
+    next.bboxCoordinateType = "xyxy";
+    next.labelPath ||= "class_name";
+    next.classIdPath ||= "class_id";
+    next.confPath ||= "confidence";
+    next.bboxPaths = [
+      next.bboxPaths?.[0] || "rect.x0",
+      next.bboxPaths?.[1] || "rect.y0",
+      next.bboxPaths?.[2] || "rect.x1",
+      next.bboxPaths?.[3] || "rect.y1",
+    ];
+    return next;
+  }
+
+  const outputs = response?.data?.outputs;
+  const firstOutput = Array.isArray(outputs) ? outputs[0] : null;
+  if (firstOutput && typeof firstOutput === "object") {
+    next.collectionPath ||= "data.outputs";
+    next.itemPath ||= "";
+    if ("x1" in firstOutput && "y1" in firstOutput && "x2" in firstOutput && "y2" in firstOutput) {
+      next.bboxInputMode = "fields";
+      next.bboxCoordinateType = "xyxy";
+      next.bboxPaths = [
+        next.bboxPaths?.[0] || "x1",
+        next.bboxPaths?.[1] || "y1",
+        next.bboxPaths?.[2] || "x2",
+        next.bboxPaths?.[3] || "y2",
+      ];
+    }
+    next.labelPath ||= "class";
+    next.classIdPath ||= "class_id";
+    next.confPath ||= "score";
+  }
+
+  return next;
+}
+
+function collectResponseMappingPaths(source, mapping) {
+  const collectionPaths = collectArrayPaths(source);
+  const collectionPath = mapping.collectionPath || collectionPaths[0] || "";
+  const collectionItem = firstArrayItem(getValueAtPath(source, collectionPath));
+  const itemPaths = collectArrayPaths(collectionItem);
+  const itemPath = mapping.itemPath || "";
+  const fieldSource = itemPath ? firstArrayItem(getValueAtPath(collectionItem, itemPath)) : collectionItem;
+  const fieldPaths = collectObjectPaths(fieldSource);
+  return {
+    collectionPaths,
+    itemPaths,
+    fieldPaths,
+  };
+}
+
+function getValueAtPath(source, path) {
+  if (!path) {
+    return source;
+  }
+  return path.split(".").reduce((current, part) => {
+    if (current === null || current === undefined) {
+      return undefined;
+    }
+    return current[part];
+  }, source);
+}
+
+function firstArrayItem(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function collectArrayPaths(source, prefix = "") {
+  const paths = [];
+  if (Array.isArray(source)) {
+    if (prefix) {
+      paths.push(prefix);
+    }
+    const first = source[0];
+    if (first && typeof first === "object") {
+      paths.push(...collectArrayPaths(first, prefix));
+    }
+  } else if (source && typeof source === "object") {
+    for (const [key, value] of Object.entries(source)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      paths.push(...collectArrayPaths(value, path));
+    }
+  }
+  return Array.from(new Set(paths));
+}
+
+function collectObjectPaths(source, prefix = "") {
+  const paths = [];
+  if (Array.isArray(source)) {
+    const first = source[0];
+    if (first && typeof first === "object") {
+      paths.push(...collectObjectPaths(first, prefix));
+    }
+  } else if (source && typeof source === "object") {
+    for (const [key, value] of Object.entries(source)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      paths.push(path);
+      if (value && typeof value === "object") {
+        paths.push(...collectObjectPaths(value, path));
+      }
+    }
+  }
+  return Array.from(new Set(paths));
+}
+
+function parseSavedText(text) {
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+function methodClass(method) {
+  return String(method || "").toLowerCase();
+}
+
+function baseName(path) {
+  return String(path || "").split(/[\\/]/).pop();
+}
+
+function parentDirectoryPath(path) {
+  let normalized = String(path || "").split("\\").join("/");
+  while (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  const separatorIndex = normalized.lastIndexOf("/");
+  if (separatorIndex <= 0) {
+    return "/data";
+  }
+  return normalized.slice(0, separatorIndex) || "/data";
+}
+
+function imageContentUrl(path) {
+  return `/api/images/content?${new URLSearchParams({ path }).toString()}`;
+}
+
+function stringify(value) {
+  return JSON.stringify(value ?? null, null, 2);
+}
+
+async function responseToError(response, fallback) {
+  const data = await response.json().catch(() => ({}));
+  const detail = Array.isArray(data.detail)
+    ? data.detail.map((item) => item.msg || JSON.stringify(item)).join("; ")
+    : data.detail;
+  return new Error(detail || `${fallback} (${response.status})`);
+}
+
+onMounted(async () => {
+  rootNode.value.expanded = true;
+  await loadChildren(rootNode.value);
+  try {
+    await loadPipelineList();
+  } catch (error) {
+    formError.value = error.message;
+  }
+  resetEditor(null, false);
+});
+
+</script>
