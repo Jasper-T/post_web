@@ -64,7 +64,7 @@ docker-compose.override.yml
 # =========================
 # Data / Runtime files
 # =========================
-data/
+data/*
 logs/
 *.log
 
@@ -77,3 +77,19 @@ logs/
 # Data / Runtime files
 # =========================
 .agents
+# Bundled first-run demo pipeline
+!data/groups.json
+!data/templates/
+data/templates/*
+!data/templates/Ungrouped/
+data/templates/Ungrouped/*
+!data/templates/Ungrouped/demo_image_pipeline/
+!data/templates/Ungrouped/demo_image_pipeline/*.json
+
+
+# =========================
+# Release
+# =========================
+.release
+
+
