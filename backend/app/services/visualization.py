@@ -9,12 +9,12 @@ from typing import Any
 from fastapi import HTTPException
 from loguru import logger
 
+from backend.app.core.config import DATASETS_ROOT
 from backend.pipeline_core.registry import DATA_ROOT
 
 
 RESULTS_ROOT = DATA_ROOT / "results"
 PRED_CACHE_ROOT = RESULTS_ROOT / ".cache"
-DATASETS_ROOT = Path("/data/datasets").resolve(strict=False)
 FORMAT_SUFFIXES = {"yolo": ".txt", "labelme": ".json", "voc": ".xml"}
 
 
@@ -247,7 +247,7 @@ def _plot_label(image_path: Path, label_path: Path, fmt: str, names: list[str], 
 def _resolve_dataset_directory(raw_path: str) -> Path:
     path = Path(raw_path).resolve(strict=False)
     if path != DATASETS_ROOT and DATASETS_ROOT not in path.parents:
-        raise HTTPException(status_code=403, detail="GT labels must be inside /data/datasets")
+        raise HTTPException(status_code=403, detail="GT labels must be inside the configured datasets root")
     if not path.is_dir():
         raise HTTPException(status_code=404, detail="GT label directory does not exist")
     return path
@@ -256,7 +256,7 @@ def _resolve_dataset_directory(raw_path: str) -> Path:
 def _resolve_dataset_file(raw_path: str) -> Path:
     path = Path(raw_path).resolve(strict=False)
     if DATASETS_ROOT not in path.parents:
-        raise HTTPException(status_code=403, detail="GT images must be inside /data/datasets")
+        raise HTTPException(status_code=403, detail="GT images must be inside the configured datasets root")
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Image does not exist")
     return path

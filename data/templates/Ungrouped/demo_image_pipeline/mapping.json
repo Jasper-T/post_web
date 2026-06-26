@@ -1,0 +1,31 @@
+{
+  "outputType": "detection",
+  "collectionPaths": [
+    "data.outputs"
+  ],
+  "itemPath": null,
+  "labelPath": "class",
+  "classIdPath": "class_id",
+  "confPath": "score",
+  "textPath": null,
+  "bboxMode": "xyxy_from_paths",
+  "bboxInputMode": "fields",
+  "bboxCoordinateType": "xyxy",
+  "bboxIsCenter": false,
+  "bboxPath": null,
+  "bboxPaths": [
+    "x1",
+    "y1",
+    "x2",
+    "y2"
+  ],
+  "bboxCast": "float",
+  "names": [
+    "demo_object"
+  ],
+  "plotFields": [
+    "label",
+    "conf"
+  ],
+  "extraFields": []
+}

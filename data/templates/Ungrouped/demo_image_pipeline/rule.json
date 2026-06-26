@@ -1,0 +1,36 @@
+{
+  "output_type": "detection",
+  "collection_paths": [
+    "data.outputs"
+  ],
+  "label": {
+    "path": "class"
+  },
+  "class_id": {
+    "path": "class_id",
+    "cast": "int"
+  },
+  "conf": {
+    "path": "score",
+    "cast": "float",
+    "default": 0
+  },
+  "bbox": {
+    "kind": "xyxy_from_paths",
+    "paths": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+    ],
+    "cast": "float",
+    "default": 0
+  },
+  "names": [
+    "demo_object"
+  ],
+  "plot_fields": [
+    "label",
+    "conf"
+  ]
+}

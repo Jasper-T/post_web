@@ -1,0 +1,17 @@
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "outputs": [
+      {
+        "class": "demo_object",
+        "class_id": 0,
+        "score": 0.92,
+        "x1": 24,
+        "y1": 24,
+        "x2": 220,
+        "y2": 180
+      }
+    ]
+  }
+}

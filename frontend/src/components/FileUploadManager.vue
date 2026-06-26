@@ -17,7 +17,7 @@
       <div class="file-upload-header">
         <div>
           <strong>上传</strong>
-          <small :title="targetPath">{{ targetPath || "请先选择 /data/datasets 内的项目" }}</small>
+          <small :title="targetPath">{{ targetPath || "请先选择数据集目录内的项目" }}</small>
         </div>
         <button class="small-button icon-button" type="button" aria-label="Close upload panel" @click="visible = false">
           <svg class="button-icon upload-close-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
@@ -81,7 +81,6 @@ import { computed, ref } from "vue";
 
 const props = defineProps({
   targetPath: { type: String, default: "" },
-  allowedRoot: { type: String, default: "/data/datasets" },
 });
 const emit = defineEmits(["uploaded"]);
 
@@ -95,9 +94,8 @@ const activeRequests = new Map();
 const uploadedResults = [];
 let nextId = 1;
 
-const normalizedAllowedRoot = computed(() => normalizePath(props.allowedRoot));
 const normalizedTargetPath = computed(() => normalizePath(props.targetPath));
-const targetAllowed = computed(() => normalizedTargetPath.value === normalizedAllowedRoot.value || normalizedTargetPath.value.startsWith(normalizedAllowedRoot.value + "/"));
+const targetAllowed = computed(() => Boolean(normalizedTargetPath.value));
 const totalBytes = computed(() => items.value.reduce((sum, item) => sum + item.size, 0));
 const totalLoaded = computed(() => items.value.reduce((sum, item) => sum + Math.min(item.loaded, item.size), 0));
 const overallPercent = computed(() => totalBytes.value ? Math.round(totalLoaded.value * 100 / totalBytes.value) : (items.value.length && completedCount.value === items.value.length ? 100 : 0));

@@ -121,7 +121,7 @@ def build_pipeline_bundle(name: str, storage_dir: str | Path | None = None):
 
     return create_request_pipeline(
         display_name=definition.display_name,
-        url=definition.url,
+        url=_resolve_pipeline_url(definition.url),
         transport=definition.transport,
         header_json=_resolve_optional_file(definition.header_json),
         body_json=_resolve_optional_file(definition.body_json),
@@ -642,6 +642,11 @@ def _to_data_relative(path: Path) -> str:
 
 def _to_project_relative(path: Path) -> str:
     return _to_data_relative(path)
+
+
+def _resolve_pipeline_url(value: str) -> str:
+    base_url = os.getenv("FUXING_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+    return value.replace("${FUXING_BASE_URL}", base_url).replace("{FUXING_BASE_URL}", base_url)
 
 
 def _resolve_optional_file(value: str | None) -> str | None:

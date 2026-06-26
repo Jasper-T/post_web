@@ -1,0 +1,16 @@
+{
+  "placeholderPaths": {
+    "image_b64": "image_base64",
+    "image_url": "image_url",
+    "image_width": "meta.width",
+    "image_height": "meta.height"
+  },
+  "placeholderTypes": {
+    "image_b64": "string",
+    "image_url": "string",
+    "image_width": "int",
+    "image_height": "int"
+  },
+  "connectTimeout": 3,
+  "readTimeout": 30
+}

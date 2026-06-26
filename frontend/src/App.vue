@@ -452,13 +452,12 @@
           :root-node="rootNode"
           :selected-path="activePath"
           :highlight-path="uploadSelectionPath"
-          title="Data Root (/data)"
+          :title="`Data Root (${appConfig.filesystemRoot})`"
           eyebrow="File System"
           loading-message="Loading..."
           :filter-loader="fetchFilteredChildren"
           show-upload-button
-          :upload-target-path="uploadParentPath"
-          upload-allowed-root="/data/datasets"
+          :upload-target-path="appConfig.datasetsRoot"
           @upload-complete="handleUploadComplete"
           @refresh="reloadRoot"
           @select="selectPath"
@@ -524,7 +523,7 @@
         <FileSystemTree
           :root-node="gtRootNode"
           :selected-path="gtBrowser.selectedPath"
-          title="Datasets (/data/datasets)"
+          :title="`Datasets (${appConfig.datasetsRoot})`"
           eyebrow="GT Labels"
           loading-message="Loading..."
           :filter-loader="fetchFilteredChildren"
@@ -646,7 +645,8 @@ const runningAll = ref(false);
 const responseLeftPercent = ref(64);
 const activePath = ref("");
 const uploadSelectionPath = ref("");
-const uploadParentPath = ref("/data/datasets");
+const appConfig = reactive({ filesystemRoot: "", datasetsRoot: "", frontendDist: "" });
+const uploadParentPath = ref("");
 const showFileBrowser = ref(false);
 const sidebarCollapsed = ref(false);
 const activeWorkspaceView = ref("request");
@@ -692,14 +692,7 @@ const visualizationSaveDialog = reactive({ visible: false });
 const editor = reactive(createEmptyEditor());
 const hasActivePipeline = computed(() => Boolean(persistedPipelineName.value || editor.name));
 
-const rootNode = ref(
-  createTreeNode({
-    name: "/data",
-    path: "/data",
-    type: "directory",
-    hasChildren: true,
-  }),
-);
+const rootNode = ref(createRootNode("", "Data Root"));
 
 const selectedResult = computed(() =>
   responseQueue.value.find((item) => item.imagePath === selectedImagePath.value) || null,
@@ -927,6 +920,33 @@ function createDefaultPostConfig() {
   };
 }
 
+function createDisplayName(path, fallback) {
+  return path || fallback;
+}
+
+function createRootNode(path, fallbackName = "Data Root") {
+  return createTreeNode({
+    name: createDisplayName(path, fallbackName),
+    path,
+    type: "directory",
+    hasChildren: true,
+  });
+}
+
+async function loadAppConfig() {
+  const response = await fetch("/api/config");
+  if (!response.ok) {
+    throw await responseToError(response, "Failed to load app config");
+  }
+  const data = await response.json();
+  appConfig.filesystemRoot = data.filesystemRoot || "";
+  appConfig.datasetsRoot = data.datasetsRoot || appConfig.filesystemRoot || "";
+  appConfig.frontendDist = data.frontendDist || "";
+  rootNode.value = createRootNode(appConfig.filesystemRoot, "Data Root");
+  uploadParentPath.value = appConfig.datasetsRoot;
+  uploadSelectionPath.value = appConfig.datasetsRoot;
+}
+
 function createTreeNode(node) {
   return {
     ...node,
@@ -1113,7 +1133,7 @@ async function loadChildren(node, force = false) {
     const data = await fetchChildren(node.path, force ? 0 : node.childrenOffset);
     node.path = data.path;
     if (node === rootNode.value) {
-      node.name = "/data";
+      node.name = createDisplayName(appConfig.filesystemRoot, "Data Root");
     }
     node.children = data.children.map(createTreeNode);
     node.childrenOffset = data.offset + data.children.length;
@@ -1230,7 +1250,7 @@ async function saveGTNames() {
 async function openGTBrowser() {
   gtBrowser.visible = true;
   gtBrowser.selectedPath = gtLabelDir.value;
-  gtRootNode.value = createTreeNode({ name: "datasets", path: "/data/datasets", type: "directory", hasChildren: true });
+  gtRootNode.value = createRootNode(appConfig.datasetsRoot, "Datasets");
   gtRootNode.value.expanded = true;
   await loadChildren(gtRootNode.value, true);
 }
@@ -1376,12 +1396,7 @@ async function openResultsBrowser() {
   }
   resultsBrowser.visible = true;
   resultsBrowser.selectedPath = "";
-  resultsRootNode.value = createTreeNode({
-    name: "/data",
-    path: "/data",
-    type: "directory",
-    hasChildren: true,
-  });
+  resultsRootNode.value = createRootNode(appConfig.filesystemRoot, "Data Root");
   resultsRootNode.value.expanded = true;
   await loadResultsRootDirectories();
 }
@@ -2354,9 +2369,9 @@ function parentDirectoryPath(path) {
   }
   const separatorIndex = normalized.lastIndexOf("/");
   if (separatorIndex <= 0) {
-    return "/data";
+    return appConfig.filesystemRoot || normalized;
   }
-  return normalized.slice(0, separatorIndex) || "/data";
+  return normalized.slice(0, separatorIndex) || appConfig.filesystemRoot || normalized;
 }
 
 function imageContentUrl(path) {
@@ -2376,6 +2391,7 @@ async function responseToError(response, fallback) {
 }
 
 onMounted(async () => {
+  await loadAppConfig();
   rootNode.value.expanded = true;
   await loadChildren(rootNode.value);
   try {

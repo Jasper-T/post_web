@@ -1,0 +1,9 @@
+{
+  "image_base64": "{{image_base64}}",
+  "image_url": "{{image_url}}",
+  "meta": {
+    "image_path": "{{image_path}}",
+    "width": "{{image_width}}",
+    "height": "{{image_height}}"
+  }
+}

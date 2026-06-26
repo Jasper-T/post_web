@@ -1,65 +1,130 @@
-# Fuxing 2
+﻿# Fuxing 2
 
-Fuxing 2 is a FastAPI + Vue 3 workspace for browsing datasets, configuring HTTP detection pipelines, testing responses, and running dsetkit-powered annotation tools.
+Fuxing 2 is a FastAPI + Vue 3 application for image dataset browsing, HTTP vision-pipeline testing, response parsing, visualization, and dsetkit-powered annotation conversion. It can run as a Docker stack for development or as a portable desktop-style package where the backend executable serves both API and frontend files.
+
+## What It Does
+
+- Browse image files from a configurable backend-visible filesystem root.
+- Upload files or folders from the frontend user's machine into the backend machine's datasets folder.
+- Create, group, clone, test, and delete HTTP image pipelines.
+- Send images to a pipeline, inspect raw JSON responses, parse detections, and preview rendered boxes.
+- Save prediction visualizations and compare with GT labels.
+- Run dsetkit tools for dataset conversion and plotting.
+- Use a built-in demo image pipeline for first-run testing.
 
 ## Project Layout
 
 ```text
 fuxing_2/
-  backend/                 FastAPI backend, pipeline registry, and CLI tools
-    app/
-    pipeline_core/
-    tools/
-    main.py
-    requirements.txt
-    Dockerfile
-  frontend/                Vue 3 frontend and Nginx image
-    src/
-    dist/
-    Dockerfile
-    nginx.conf
-  scripts/                 Local maintenance scripts
-  data/                    Runtime data mounted into the backend container
+  backend/                 FastAPI backend, pipeline registry, launcher, and tools
+  frontend/                Vue 3 frontend and production build
+  data/                    Runtime pipeline templates, groups, logs, and results
+  datasets/                Local dataset root for development; portable builds create this folder
+  scripts/                 Build and maintenance scripts
+  release/                 Generated portable packages
   dsetkit-0.3.1-py3-none-any.whl
   docker-compose.yml
-  .env.example
+```
+
+A portable Windows package has this shape:
+
+```text
+fuxing/
+  fuxing.exe
+  start.bat
+  fuxing.env
+  html/
+  data/
+  datasets/
+```
+
+Keep these files and folders together. The executable reads runtime data and frontend files from sibling folders.
+
+## Runtime Directories
+
+- `html/`: built frontend files served by the backend launcher.
+- `data/`: pipeline groups, pipeline JSON templates, logs, and run results.
+- `datasets/`: fixed upload destination on the backend machine.
+
+The file browser dialog and upload feature intentionally use different scopes:
+
+- File browser root: controlled by `FUXING_FILESYSTEM_ROOT`; Linux/macOS default is `/`, Windows portable default is the drive that contains `fuxing.exe`.
+- Upload source: selected freely by the browser from the frontend user's machine.
+- Upload target: always `FUXING_DATASETS_ROOT`, which defaults to `fuxing/datasets` in portable builds.
+
+This supports a common deployment shape where the frontend is opened on machine A and the backend runs on machine B. Upload transfers files from A into B's datasets folder.
+
+## Configuration
+
+The launcher reads configuration in this order:
+
+1. Command-line options, such as `--filesystem-root D:\datasets`.
+2. `fuxing.env` next to the executable.
+3. Platform defaults.
+
+Useful environment variables:
+
+```text
+FUXING_FILESYSTEM_ROOT   Root shown by the file browser dialog
+FUXING_DATA_ROOT         Runtime app data directory
+FUXING_DATASETS_ROOT     Backend upload target directory
+FUXING_FRONTEND_DIST     Built frontend directory
+FUXING_BASE_URL          Internal base URL used by the demo pipeline
+```
+
+## Windows Portable Build
+
+Build from the project root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1
+```
+
+Build with a custom file-browser root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 -FileSystemRoot D:\works\datasets
+```
+
+Useful options:
+
+- `-Python <path>`: choose the Python executable.
+- `-NoFrontendBuild`: reuse existing `frontend/dist`.
+- `-SkipInstall`: skip Python dependency installation.
+- `-OneDir`: build PyInstaller onedir output instead of the default onefile exe.
+
+## macOS Portable Build
+
+The macOS package must be built on macOS:
+
+```bash
+scripts/macos/build_portable.sh
+```
+
+With a custom file-browser root:
+
+```bash
+scripts/macos/build_portable.sh --filesystem-root /Users/you/datasets
 ```
 
 ## Docker Compose
 
-The compose stack starts two services:
-
-- `webui-backend`: FastAPI backend on `8000`
-- `webui-frontend`: Vue static site through Nginx on `5173`
-
-The backend image installs `backend/requirements.txt` and the local `dsetkit-0.3.1-py3-none-any.whl`. The wheel brings its own Python dependencies, including `natsort`; `natsort` is also listed in backend requirements for clarity.
-
-Start the stack from the project root:
+Start both backend and frontend containers:
 
 ```powershell
 docker compose up -d --build
 ```
 
-Visit:
+Default services:
 
-- Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
+- Frontend: http://localhost:5173
 
-Useful environment variables are shown in `.env.example`:
+The backend Docker image installs `backend/requirements.txt` and the local `dsetkit-0.3.1-py3-none-any.whl`.
 
-```powershell
-Copy-Item .env.example .env
-```
+## Local Development
 
-By default, compose mounts:
-
-- `./data` to `/data/fuxing`
-- `D:/works/projects/00_datasets/` to `/data/datasets/`
-- the project root to `/workspace/project` for live backend code during development
-
-## Backend Development
-
-Run locally from the project root:
+Backend:
 
 ```bash
 python -m pip install -r backend/requirements.txt
@@ -67,9 +132,7 @@ python -m pip install dsetkit-0.3.1-py3-none-any.whl
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The backend reads runtime data from `FUXING_DATA_ROOT`; if unset, it defaults to `data/` under the project root.
-
-## Frontend Development
+Frontend:
 
 ```bash
 cd frontend
@@ -77,37 +140,13 @@ npm install
 npm run dev
 ```
 
-For a production frontend build:
+Production frontend build:
 
 ```bash
 cd frontend
-npm install
 npm run build
 ```
 
-The dedicated frontend container serves the built app through Nginx. The backend can also serve `frontend/dist` when that directory exists in the mounted project root.
+## Demo Pipeline
 
-## Pipeline Registry
-
-Pipelines are stored under the runtime data directory, usually `data/`. A pipeline definition includes fields such as:
-
-- `name`
-- `display_name`
-- `url`
-- `method`
-- `header_json`
-- `body_json`
-- `default_inputs`
-- `response_parser`
-
-Response parser rules support detection, OCR, and count outputs. The backend API can create and update these definitions through the pipeline endpoints.
-
-## Tools
-
-Optional command-line tools live under `backend/tools` and can be run as modules, for example:
-
-```bash
-python -m backend.tools.main
-```
-
-These tools share the same `FUXING_DATA_ROOT` convention as the web backend.
+`data/templates/Ungrouped/demo_image_pipeline` is included by default. It points to the backend's built-in mock detection endpoint and accepts an image payload. Use it to confirm that file browsing, request construction, response mapping, and visualization are working before connecting a real algorithm service.

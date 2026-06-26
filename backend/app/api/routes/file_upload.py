@@ -10,7 +10,7 @@ router = APIRouter(prefix="/files", tags=["files"])
 @router.post("/upload", response_model=FileUploadResponse)
 async def create_uploaded_file(
     request: Request,
-    directory: str = Query(...),
+    directory: str | None = Query(default=None),
     relative_path: str = Query(...),
 ) -> FileUploadResponse:
     return await upload_file(request, directory=directory, relative_path=relative_path)
