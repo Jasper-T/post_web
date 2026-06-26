@@ -46,7 +46,6 @@ frontend/.cache/
 # uv cache
 # =========================
 .uv-cache/
-web/.uv-cache/
 
 # =========================
 # IDE / OS
@@ -62,7 +61,6 @@ Thumbs.db
 docker-compose.override.yml
 
 
-
 # =========================
 # Data / Runtime files
 # =========================
@@ -74,3 +72,8 @@ logs/
 **/.cache/
 **/results/
 **/pipeline_runs/
+
+# =========================
+# Data / Runtime files
+# =========================
+.agents
