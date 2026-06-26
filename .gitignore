@@ -90,6 +90,6 @@ data/templates/Ungrouped/*
 # =========================
 # Release
 # =========================
-.release
+release/
 
 
