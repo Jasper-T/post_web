@@ -9,7 +9,7 @@ from loguru import logger
 
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-DATA_ROOT = Path(os.getenv("FUXING_DATA_ROOT", Path(__file__).resolve().parents[4] / "data"))
+DATA_ROOT = Path(os.getenv("FUXING_DATA_ROOT", Path(__file__).resolve().parents[3] / "data"))
 LOG_DIR = Path(os.getenv("LOG_DIR", DATA_ROOT / "logs"))
 LOG_ROTATION = os.getenv("LOG_ROTATION", "10 MB")
 LOG_RETENTION = os.getenv("LOG_RETENTION", "14 days")

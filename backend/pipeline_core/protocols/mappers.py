@@ -22,7 +22,7 @@ class ResponseMapper(ABC):
 
 
 class RuleBasedResponseMapper(ResponseMapper):
-    TEMPLATE_DIR = Path(os.getenv("FUXING_DATA_ROOT", Path(__file__).resolve().parents[4] / "data")) / "templates" / "responses"
+    TEMPLATE_DIR = Path(os.getenv("FUXING_DATA_ROOT", Path(__file__).resolve().parents[3] / "data")) / "templates" / "responses"
 
     def __init__(self, rule_name: str | None = None, rules: dict[str, Any] | None = None):
         if rule_name is None and rules is None:

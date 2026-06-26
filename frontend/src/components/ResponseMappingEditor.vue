@@ -135,7 +135,7 @@
       <div class="json-import-dialog json-preview-dialog">
         <div class="json-import-dialog-header">
           <h4>Schema Preview</h4>
-          <button class="small-button" type="button" @click="showPreview = false">Close</button>
+          <button class="small-button icon-button" type="button" title="Close" aria-label="Close schema preview" @click="showPreview = false"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
         <pre class="json-template-saved-preview">{{ previewText }}</pre>
       </div>

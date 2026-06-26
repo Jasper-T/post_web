@@ -37,7 +37,13 @@ from backend.pipeline_core import (
     update_pipeline_definition_group,
 )
 from backend.pipeline_core.registry import DATA_ROOT, TEMPLATES_DIR
-from backend.app.services.visualization import clear_pred_cache, get_pred_saved_path, render_pred_cache
+from backend.app.services.visualization import (
+    clear_pred_cache,
+    get_pred_cache_path,
+    get_pred_saved_path,
+    render_pred_cache,
+    sync_pred_cache,
+)
 from backend.app.schemas.pipeline_tester import (
     PipelineAssetResponse,
     PipelineAssetSaveRequest,
@@ -204,9 +210,8 @@ def save_pipeline(editor: PipelineEditor) -> SavePipelineResponse:
     normalized_group = normalize_group_name(editor.groupName)
     create_pipeline_group(normalized_group)
     pipeline_dir = get_group_pipeline_dir(normalized_group, editor.name)
-    asset_dir = get_group_pipeline_asset_dir(normalized_group, editor.displayName)
+    asset_dir = pipeline_dir
     pipeline_dir.mkdir(parents=True, exist_ok=True)
-    asset_dir.mkdir(parents=True, exist_ok=True)
 
     header_path = asset_dir / "header.json"
     body_path = asset_dir / "body.json"
@@ -229,11 +234,11 @@ def save_pipeline(editor: PipelineEditor) -> SavePipelineResponse:
             detail="Body JSON and Response JSON are required when Mapping or Post Config is configured",
         )
 
-    header_json = _write_optional_json(header_path, editor.headerTemplate, has_header)
-    body_json = _write_optional_json(body_path, editor.bodyTemplate, has_body)
-    response_template_json = _write_optional_json(response_path, editor.templateInput or {}, has_response)
-    response_map_json = _write_optional_json(map_path, _response_mapping_to_storage_payload(normalized_mapping), has_mapping)
-    post_config_json = _write_optional_json(post_config_path, editor.postConfig or {}, has_post_config)
+    header_json = _write_optional_json(header_path, editor.headerTemplate or {}, True)
+    body_json = _write_optional_json(body_path, editor.bodyTemplate or {}, True)
+    response_template_json = _write_optional_json(response_path, editor.templateInput or {}, True)
+    response_map_json = _write_optional_json(map_path, _response_mapping_to_storage_payload(normalized_mapping), True)
+    post_config_json = _write_optional_json(post_config_path, editor.postConfig or {}, True)
     rule_json = _write_optional_json(rule_path, response_rules, has_mapping)
 
     default_inputs = {
@@ -450,6 +455,7 @@ def load_pipeline_run_results(
                 elapsedMs=metadata.get("elapsed_ms"),
                 parsed=parsed,
                 error=metadata.get("error"),
+                predCachePath=get_pred_cache_path(name, metadata["image_path"]),
                 predSavedPath=get_pred_saved_path(name, metadata["image_path"]),
             )
         except Exception:
@@ -480,7 +486,7 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
     if not image_paths:
         raise HTTPException(status_code=422, detail="No images found in the selected path")
 
-    if request.clearVisualizationCache:
+    if request.clearVisualizationCache and not request.saveResults:
         clear_pred_cache(name)
 
     run_dir = None
@@ -533,12 +539,18 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
                 result_file = _write_parsed_result(run_dir, image_path, parsed)
             succeeded += 1
         except Exception as exc:
+            pred_cache_path = None
+            try:
+                pred_cache_path = render_pred_cache(name, str(image_path), [], plot_fields)
+            except Exception as plot_exc:
+                logger.exception("Original image cache failed pipeline_name={} image_path={} error={}", name, image_path, plot_exc)
             item = RunPipelineItem(
                 imagePath=str(image_path),
                 ok=False,
                 elapsedMs=round((perf_counter() - started_at) * 1000, 3),
                 rawResponse=raw_response,
                 error=str(exc),
+                predCachePath=pred_cache_path,
             )
             failed += 1
 
@@ -561,6 +573,10 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
             "failed": sum(1 for entry in summary_items if not entry.get("ok")),
             "items": summary_items,
         })
+        sync_pred_cache(
+            name,
+            [entry["image_path"] for entry in summary_items if entry.get("image_path")],
+        )
 
     return RunPipelineResponse(
         status="success",

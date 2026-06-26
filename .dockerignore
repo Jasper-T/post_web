@@ -1,0 +1,11 @@
+.git
+.agents
+.codex
+data
+.uv-cache
+backend/**/__pycache__
+backend/**/*.pyc
+frontend/node_modules
+frontend/.vite-temp
+frontend/dist
+**/.DS_Store

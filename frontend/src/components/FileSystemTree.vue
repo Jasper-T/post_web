@@ -2,7 +2,7 @@
   <section class="panel explorer-panel">
     <header class="panel-header">
       <div>
-        <p class="eyebrow">{{ eyebrow }}</p>
+        <p v-if="eyebrow" class="eyebrow">{{ eyebrow }}</p>
         <h2>{{ title }}</h2>
       </div>
       <div class="header-actions">
@@ -44,6 +44,7 @@
             <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z" fill="currentColor" />
           </svg>
         </button>
+        <slot name="header-actions"></slot>
       </div>
     </header>
 

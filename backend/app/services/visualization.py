@@ -19,12 +19,12 @@ FORMAT_SUFFIXES = {"yolo": ".txt", "labelme": ".json", "voc": ".xml"}
 
 
 def clear_all_visualization_caches() -> None:
-    shutil.rmtree(PRED_CACHE_ROOT, ignore_errors=True)
+    _remove_cache_directory(PRED_CACHE_ROOT, allow_pred_root=True)
     if DATASETS_ROOT.exists():
         for cache_dir in DATASETS_ROOT.rglob(".cache"):
             gt_dir = cache_dir / "GT"
             if gt_dir.exists():
-                shutil.rmtree(gt_dir, ignore_errors=True)
+                _remove_cache_directory(gt_dir)
 
 
 def get_pred_saved_path(pipeline_name: str, image_path: str) -> str | None:
@@ -32,14 +32,29 @@ def get_pred_saved_path(pipeline_name: str, image_path: str) -> str | None:
     return str(path) if path.is_file() else None
 
 
+def get_pred_cache_path(pipeline_name: str, image_path: str) -> str | None:
+    path = _pred_cache_dir(pipeline_name) / _visualization_filename(Path(image_path))
+    return str(path) if path.is_file() else None
+
+
+def sync_pred_cache(pipeline_name: str, image_paths: list[str]) -> None:
+    cache_dir = _pred_cache_dir(pipeline_name)
+    if not cache_dir.exists():
+        return
+    expected_names = {_visualization_filename(Path(image_path)) for image_path in image_paths}
+    for child in cache_dir.iterdir():
+        if child.is_file() and child.name not in expected_names:
+            child.unlink()
+        elif child.is_dir():
+            raise RuntimeError(f"Unexpected directory in Pred cache: {child}")
+
+
 def clear_pred_cache(pipeline_name: str) -> None:
-    shutil.rmtree(_pred_cache_dir(pipeline_name), ignore_errors=True)
+    _remove_cache_directory(_pred_cache_dir(pipeline_name))
 
 
 def render_pred_cache(pipeline_name: str, image_path: str, parsed: Any, plot_fields: list[str] | None = None) -> str | None:
     detections = _normalize_detections(parsed)
-    if not detections:
-        return None
     cache_path = _pred_cache_path(pipeline_name, image_path)
     _plot_detections(
         image_path,
@@ -53,7 +68,7 @@ def render_pred_cache(pipeline_name: str, image_path: str, parsed: Any, plot_fie
 def generate_gt_cache(image_paths: list[str], label_dir: str, fmt: str, names: list[str]) -> list[dict[str, Any]]:
     label_root = _resolve_dataset_directory(label_dir)
     cache_dir = label_root.parent / ".cache" / "GT"
-    shutil.rmtree(cache_dir, ignore_errors=True)
+    _remove_cache_directory(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     suffix = FORMAT_SUFFIXES[fmt]
     items: list[dict[str, Any]] = []
@@ -68,7 +83,13 @@ def generate_gt_cache(image_paths: list[str], label_dir: str, fmt: str, names: l
             _plot_label(image_path, label_path, fmt, names, output_path)
             items.append({"imagePath": str(image_path), "cachePath": str(output_path)})
         except Exception as exc:
-            items.append({"imagePath": raw_image_path, "error": str(exc)})
+            try:
+                image_path = _resolve_dataset_file(raw_image_path)
+                output_path = cache_dir / _visualization_filename(image_path)
+                _plot_detections(image_path, [], [], output_path)
+                items.append({"imagePath": str(image_path), "cachePath": str(output_path), "error": str(exc)})
+            except Exception as fallback_exc:
+                items.append({"imagePath": raw_image_path, "error": f"{exc}; original image fallback failed: {fallback_exc}"})
     return items
 
 
@@ -95,7 +116,9 @@ def save_visualizations(
             image_path = Path(raw_image_path).resolve(strict=False)
             cache_path = cache_dir / _visualization_filename(image_path)
             if not cache_path.is_file():
-                raise FileNotFoundError("Cached visualization is missing")
+                if not image_path.is_file():
+                    raise FileNotFoundError("Original image is missing")
+                _plot_detections(image_path, [], [], cache_path)
             saved_path = output_dir / cache_path.name
             shutil.copy2(cache_path, saved_path)
             items.append({"imagePath": str(image_path), "cachePath": str(cache_path), "savedPath": str(saved_path)})
@@ -106,6 +129,27 @@ def save_visualizations(
 
 def _pred_cache_dir(pipeline_name: str) -> Path:
     return PRED_CACHE_ROOT / pipeline_name / "pred"
+
+
+def _remove_cache_directory(target: Path, *, allow_pred_root: bool = False) -> None:
+    resolved_target = target.resolve(strict=False)
+    pred_cache_root = PRED_CACHE_ROOT.resolve(strict=False)
+    datasets_root = DATASETS_ROOT.resolve(strict=False)
+
+    is_pred_root = resolved_target == pred_cache_root and allow_pred_root
+    is_pred_pipeline_cache = (
+        pred_cache_root in resolved_target.parents
+        and resolved_target.name == "pred"
+        and resolved_target.parent.parent == pred_cache_root
+    )
+    is_gt_cache = (
+        datasets_root in resolved_target.parents
+        and resolved_target.name == "GT"
+        and resolved_target.parent.name == ".cache"
+    )
+    if not (is_pred_root or is_pred_pipeline_cache or is_gt_cache):
+        raise RuntimeError(f"Refusing to remove non-cache directory: {resolved_target}")
+    shutil.rmtree(resolved_target, ignore_errors=True)
 
 
 def _pred_cache_path(pipeline_name: str, image_path: str | Path) -> Path:
@@ -146,12 +190,15 @@ def _plot_detections(
         if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
             continue
         class_id = detection.get("class_id")
-        text_parts = [
-            _format_plot_value(detection.get(field))
-            for field in plot_fields
-            if detection.get(field) not in (None, "")
-        ]
-        text = " | ".join(part for part in text_parts if part)
+        text_parts = []
+        for field in plot_fields:
+            value = detection.get(field)
+            if _is_empty_plot_value(value):
+                continue
+            formatted = _format_plot_value(value)
+            if formatted:
+                text_parts.append(formatted)
+        text = " | ".join(text_parts)
         if text:
             plotter.detection(
                 bbox=list(map(float, bbox)),
@@ -163,9 +210,21 @@ def _plot_detections(
             plotter.box(list(map(float, bbox)), plotter.random_color(color_id))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plotter.save(output_path)
+    rendered = plotter.get()
+    if not cv2.imwrite(str(output_path), rendered):
+        raise RuntimeError("Failed to write dsetkit visualization image")
     if not output_path.is_file():
         raise RuntimeError("dsetkit Plotter did not create the visualization image")
+
+
+def _is_empty_plot_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple, dict, set)):
+        return len(value) == 0
+    return False
 
 
 def _format_plot_value(value: Any) -> str:

@@ -29,7 +29,7 @@
     </header>
 
     <section v-if="!isSidebarCollapsed" class="panel sidebar-panel collection-sidebar-panel">
-      <div class="collection-sidebar-scroll">
+      <div class="collection-sidebar-scroll" @contextmenu.prevent="openBlankContextMenu($event)">
         <div class="pipeline-template-list">
           <div v-for="group in regularGroups" :key="group.name" class="pipeline-group-section">
             <button
@@ -37,6 +37,7 @@
               type="button"
               :aria-expanded="!collapsedGroups[group.name]"
               @click="toggleGroupCollapse(group.name)"
+              @contextmenu.prevent.stop="openGroupContextMenu($event, group)"
             >
               <span
                 class="pipeline-group-arrow"
@@ -57,6 +58,7 @@
                 :class="{ active: activeItemKey === item.key }"
                 type="button"
                 @click="$emit('select-item', item.raw)"
+                @contextmenu.prevent.stop="openItemContextMenu($event, item, group)"
               >
                 <div class="pipeline-template-row">
                   <strong>{{ item.label }}</strong>
@@ -94,6 +96,7 @@
             :class="{ active: activeItemKey === item.key }"
             type="button"
             @click="$emit('select-item', item.raw)"
+            @contextmenu.prevent.stop="openItemContextMenu($event, item, trashGroup)"
           >
             <div class="pipeline-template-row">
               <strong>{{ item.label }}</strong>
@@ -112,7 +115,7 @@
           <p class="eyebrow">{{ eyebrow }}</p>
           <h3>{{ managerTitle }}</h3>
         </div>
-        <button class="small-button" type="button" @click="closeManager">Close</button>
+        <button class="small-button icon-button" type="button" title="Close" aria-label="Close collections editor" @click="closeManager"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
       </div>
 
       <div class="collection-manager-toolbar">
@@ -199,10 +202,48 @@
       </div>
     </div>
   </div>
+  <div
+    v-if="contextMenu.visible"
+    class="collection-context-menu"
+    :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+    @click.stop
+    @contextmenu.prevent
+  >
+    <template v-if="contextMenu.type === 'item' && contextMenu.item">
+      <button type="button" @click="createPipelineInGroup(contextMenu.group?.name || '')">New pipeline in this group</button>
+      <button type="button" @click="cloneItem(contextMenu.item)">Clone</button>
+      <button type="button" @click="deleteItem(contextMenu.item, Boolean(contextMenu.group?.isTrash))">
+        {{ contextMenu.group?.isTrash ? 'Delete permanently' : 'Move to Deleted' }}
+      </button>
+      <div class="collection-context-separator"></div>
+      <p class="collection-context-label">Move to...</p>
+      <button
+        v-for="target in moveTargetsForContextItem"
+        :key="'context-move-' + target"
+        type="button"
+        @click="moveItem(contextMenu.item, target)"
+      >
+        {{ target }}
+      </button>
+      <button v-if="!moveTargetsForContextItem.length" type="button" disabled>No available group</button>
+    </template>
+
+    <template v-else-if="contextMenu.type === 'group' && contextMenu.group">
+      <button type="button" @click="createPipelineInGroup(contextMenu.group.name)">New pipeline</button>
+      <button v-if="contextMenu.group.canRename" type="button" @click="renameGroupFromContext(contextMenu.group)">Rename group</button>
+      <button v-if="contextMenu.group.canDelete" type="button" @click="deleteGroupFromContext(contextMenu.group)">Delete group</button>
+      <button type="button" disabled>Paste / Move here</button>
+    </template>
+
+    <template v-else>
+      <button type="button" @click="createPipelineInGroup('')">New pipeline</button>
+    </template>
+  </div>
+
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 
 const props = defineProps({
   groups: { type: Array, default: () => [] },
@@ -220,6 +261,8 @@ const emit = defineEmits([
   "delete-group",
   "move-item",
   "delete-item",
+  "new-item",
+  "clone-item",
   "select-item",
   "collapse-change",
 ]);
@@ -231,10 +274,25 @@ const editingGroup = ref("");
 const collapsedGroups = reactive({});
 const managerTargetGroups = reactive({});
 const renameDrafts = reactive({});
+const contextMenu = reactive({
+  visible: false,
+  type: "blank",
+  x: 0,
+  y: 0,
+  group: null,
+  item: null,
+});
 
 const trashGroup = computed(() => props.groups.find((group) => group.name === props.trashGroupName) || null);
 const regularGroups = computed(() => props.groups.filter((group) => group.name !== props.trashGroupName));
 const movableGroupNames = computed(() => props.groups.filter((group) => !group.isTrash).map((group) => group.name));
+const moveTargetsForContextItem = computed(() => {
+  if (!contextMenu.item) {
+    return [];
+  }
+  const currentGroupName = contextMenu.group?.name || "";
+  return movableGroupNames.value.filter((name) => name && name !== currentGroupName);
+});
 
 watch(
   () =>
@@ -257,6 +315,82 @@ watch(
   },
   { immediate: true },
 );
+
+onMounted(() => {
+  window.addEventListener("click", closeContextMenu);
+  window.addEventListener("blur", closeContextMenu);
+  window.addEventListener("keydown", handleContextMenuKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("click", closeContextMenu);
+  window.removeEventListener("blur", closeContextMenu);
+  window.removeEventListener("keydown", handleContextMenuKeydown);
+});
+
+function handleContextMenuKeydown(event) {
+  if (event.key === "Escape") {
+    closeContextMenu();
+  }
+}
+
+function openContextMenu(event, payload) {
+  const menuWidth = 240;
+  const menuHeight = 320;
+  contextMenu.visible = true;
+  contextMenu.type = payload.type;
+  contextMenu.group = payload.group || null;
+  contextMenu.item = payload.item || null;
+  contextMenu.x = Math.min(event.clientX, Math.max(8, window.innerWidth - menuWidth - 8));
+  contextMenu.y = Math.min(event.clientY, Math.max(8, window.innerHeight - menuHeight - 8));
+}
+
+function openBlankContextMenu(event) {
+  openContextMenu(event, { type: "blank" });
+}
+
+function openGroupContextMenu(event, group) {
+  openContextMenu(event, { type: "group", group });
+}
+
+function openItemContextMenu(event, item, group) {
+  openContextMenu(event, { type: "item", item, group });
+}
+
+function closeContextMenu() {
+  contextMenu.visible = false;
+}
+
+function createPipelineInGroup(groupName) {
+  emit("new-item", { groupName: groupName || "Ungrouped" });
+  closeContextMenu();
+}
+
+function cloneItem(item) {
+  emit("clone-item", { item: item.raw });
+  closeContextMenu();
+}
+
+function deleteItem(item, permanent) {
+  emit("delete-item", { item: item.raw, permanent });
+  closeContextMenu();
+}
+
+function moveItem(item, targetGroup) {
+  emit("move-item", { item: item.raw, targetGroup });
+  closeContextMenu();
+}
+
+function renameGroupFromContext(group) {
+  closeContextMenu();
+  showManager.value = true;
+  startRenameGroup(group);
+}
+
+function deleteGroupFromContext(group) {
+  emit("delete-group", group.name);
+  closeContextMenu();
+}
 
 function toggleSidebar() {
   isSidebarCollapsed.value = !isSidebarCollapsed.value;

@@ -6,15 +6,15 @@ WORKDIR /app
 
 ENV npm_config_loglevel=warn
 
-COPY package*.json ./
+COPY frontend/package*.json ./
 RUN npm install
 
-COPY . .
+COPY frontend/ .
 RUN npm run build
 
 FROM ${DOCKER_HUB_MIRROR}/nginx:1.27-alpine
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80

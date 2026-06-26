@@ -1,43 +1,95 @@
-# HTTP Pipeline Project
+# Fuxing 2
 
-## Overview
+Fuxing 2 is a FastAPI + Vue 3 workspace for browsing datasets, configuring HTTP detection pipelines, testing responses, and running dsetkit-powered annotation tools.
 
-This project now uses a configuration-driven pipeline registry.
+## Project Layout
 
-- `pipelines/`
-  - Primary entry for request pipelines
-  - `definitions/*.json` registers pipelines
-- `templates/` stores request and response rule JSON files
-  - `registry.py` loads definitions, builds pipelines, and saves new definitions
-- `ApiPipeline/`
-  - Generic HTTP execution layer
-  - `factory.py` builds runtime pipelines from JSON templates and response parsing rules
-- `protocols/`
-  - Shared protocol building blocks
-  - Template-based protocol implementation
-  - Rule-based response mappers
-- `post.py`
-  - Runs a named pipeline on one image or a directory and saves detections
-- `main.py`
-  - Integrates request, plot, and dump flow
-- `web/`
-  - Backend API now reads from the new pipeline registry
+```text
+fuxing_2/
+  backend/                 FastAPI backend, pipeline registry, and CLI tools
+    app/
+    pipeline_core/
+    tools/
+    main.py
+    requirements.txt
+    Dockerfile
+  frontend/                Vue 3 frontend and Nginx image
+    src/
+    dist/
+    Dockerfile
+    nginx.conf
+  scripts/                 Local maintenance scripts
+  data/                    Runtime data mounted into the backend container
+  dsetkit-0.3.1-py3-none-any.whl
+  docker-compose.yml
+  .env.example
+```
 
-Legacy per-project protocol classes have been removed from the main execution path. Use pipeline definitions plus JSON templates/rules.
+## Docker Compose
 
-## Dependencies
+The compose stack starts two services:
 
-Required:
+- `webui-backend`: FastAPI backend on `8000`
+- `webui-frontend`: Vue static site through Nginx on `5173`
 
-- `requests`
-- `natsort`
-- `dsetkit`
+The backend image installs `backend/requirements.txt` and the local `dsetkit-0.3.1-py3-none-any.whl`. The wheel brings its own Python dependencies, including `natsort`; `natsort` is also listed in backend requirements for clarity.
 
-## Pipeline Definitions
+Start the stack from the project root:
 
-Each pipeline is defined by a JSON file in [pipelines/definitions](D:/works/projects/fuxing_2/pipelines/definitions).
+```powershell
+docker compose up -d --build
+```
 
-Example fields:
+Visit:
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+
+Useful environment variables are shown in `.env.example`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+By default, compose mounts:
+
+- `./data` to `/data/fuxing`
+- `D:/works/projects/00_datasets/` to `/data/datasets/`
+- the project root to `/workspace/project` for live backend code during development
+
+## Backend Development
+
+Run locally from the project root:
+
+```bash
+python -m pip install -r backend/requirements.txt
+python -m pip install dsetkit-0.3.1-py3-none-any.whl
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The backend reads runtime data from `FUXING_DATA_ROOT`; if unset, it defaults to `data/` under the project root.
+
+## Frontend Development
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+For a production frontend build:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+The dedicated frontend container serves the built app through Nginx. The backend can also serve `frontend/dist` when that directory exists in the mounted project root.
+
+## Pipeline Registry
+
+Pipelines are stored under the runtime data directory, usually `data/`. A pipeline definition includes fields such as:
 
 - `name`
 - `display_name`
@@ -48,141 +100,14 @@ Example fields:
 - `default_inputs`
 - `response_parser`
 
-`response_parser` supports:
+Response parser rules support detection, OCR, and count outputs. The backend API can create and update these definitions through the pipeline endpoints.
 
-- `template_input`: a sample response JSON used to validate the parser config
-- `rule_json`: path to a complete response rule JSON file
+## Tools
 
-## Runtime API
+Optional command-line tools live under `backend/tools` and can be run as modules, for example:
 
-Build a registered pipeline:
-
-```python
-from pipelines import build_pipeline
-
-pipeline = build_pipeline("demo_detection", storage_dir="results/dets/demo_detection")
+```bash
+python -m backend.tools.main
 ```
 
-Create a runtime pipeline directly:
-
-```python
-from ApiPipeline import ResponseParserConfig, create_request_pipeline
-
-bundle = create_request_pipeline(
-    display_name="demo",
-    url="http://example.com/api/detect",
-    header_json={"Content-Type": "application/json"},
-    body_json={"image": "{{image_base64}}"},
-    response_config=ResponseParserConfig(
-        rules={
-            "output_type": "detection",
-            "collection_paths": ["data.outputs"],
-            "label": {"path": "label"},
-            "bbox": {"kind": "passthrough", "path": "bbox", "default": []},
-            "conf": {"path": "score", "cast": "float", "default": 0},
-            "extra_fields": [{"name": "track_id", "path": "track_id"}],
-        },
-        template_input={
-            "data": {
-                "outputs": [
-                    {
-                        "bbox": [10, 20, 100, 120],
-                        "label": "demo",
-                        "score": 0.91,
-                        "track_id": 7,
-                    }
-                ]
-            }
-        },
-    ),
-)
-```
-
-`create_request_pipeline(...)` uses runtime `ResponseParserConfig(rules=... | rule_json=...)`, while persisted pipeline definitions use `response_parser.rule_json`.
-
-Save a new persistent definition:
-
-```python
-from ApiPipeline import ResponseParserConfig
-from pipelines import save_pipeline_definition
-
-save_pipeline_definition(
-    name="my_pipeline",
-    display_name="My Pipeline",
-    url="http://example.com/api/detect",
-    header_json="pipelines/templates/demo_header.json",
-    body_json="pipelines/templates/demo_body.json",
-    default_inputs={"extra": {"service_name": "demo"}},
-    response_config=ResponseParserConfig(
-        rule_json="pipelines/templates/responses/demo_detection.json",
-        template_input={
-            "data": {
-                "outputs": [
-                    {
-                        "bbox": [10, 20, 100, 120],
-                        "label": "demo",
-                        "score": 0.91,
-                    }
-                ]
-            }
-        },
-    ),
-    overwrite=True,
-)
-```
-
-Create a pipeline definition from the web backend:
-
-- `POST /api/pipelines`
-- Request body fields:
-  - `name`
-  - `displayName`
-  - `url`
-  - `transport`
-  - `method`
-  - `headerTemplate`
-  - `bodyTemplate`
-  - `responseParser`
-- `responseParser.rules` is the complete response rule JSON that will be written to a file
-- `responseParser.templateInput` should be a real sample response JSON, for example:
-
-```json
-{
-  "data": {
-    "outputs": [
-      {
-        "bbox": [10, 20, 100, 120],
-        "label": "demo",
-        "score": 0.91,
-        "track_id": 7
-      }
-    ]
-  }
-}
-```
-
-## Request Template Placeholders
-
-Supported placeholders in header/body templates:
-
-- `{{display_name}}`
-- `{{image_base64}}`
-- `{{image_width}}`
-- `{{image_height}}`
-- `{{image_url}}`
-- `{{prompt}}`
-- `{{text}}`
-- `{{unix_timestamp}}`
-- `{{unix_timestamp_ms}}`
-- `{{extra.some_key}}`
-
-## Response Access Levels
-
-- `pipeline.run(...)`
-  - Parsed unified detections
-- `pipeline.run_data(...)`
-  - `response.json().get("data")`
-- `pipeline.run_json(...)`
-  - Full `response.json()`
-- `pipeline.run_response(...)`
-  - Raw transport response wrapper
+These tools share the same `FUXING_DATA_ROOT` convention as the web backend.

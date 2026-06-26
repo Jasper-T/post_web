@@ -14,7 +14,7 @@ from backend.pipeline_core.api_pipeline.transport import TransportKind
 from backend.pipeline_core.protocols.mappers import load_response_rules
 
 
-CODE_ROOT = Path(__file__).resolve().parents[3]
+CODE_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = Path(os.getenv("FUXING_DATA_ROOT", CODE_ROOT / "data")).resolve()
 PROJECT_ROOT = DATA_ROOT
 DEFINITIONS_DIR = DATA_ROOT / "definitions"

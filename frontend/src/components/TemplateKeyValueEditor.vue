@@ -75,7 +75,7 @@
             <h4>Bulk Edit</h4>
             <p>每行一条，格式：enabled[TAB]name[TAB]value[TAB]type</p>
           </div>
-          <button class="small-button" type="button" @click="closeBulkEdit">关闭</button>
+          <button class="small-button icon-button" type="button" title="关闭" aria-label="关闭批量编辑弹窗" @click="closeBulkEdit"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
 
         <textarea

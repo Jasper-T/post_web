@@ -62,7 +62,7 @@
       <div class="json-import-dialog">
         <div class="json-import-dialog-header">
           <h4>Import JSON</h4>
-          <button class="small-button" type="button" @click="closeImportDialog">Close</button>
+          <button class="small-button icon-button" type="button" title="Close" aria-label="Close import dialog" @click="closeImportDialog"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
         <div class="json-import-dialog-body">
           <div class="json-import-dialog-inline">
@@ -85,7 +85,7 @@
       <div class="json-import-dialog json-preview-dialog">
         <div class="json-import-dialog-header">
           <h4>Saved JSON</h4>
-          <button class="small-button" type="button" @click="showPreviewDialog = false">Close</button>
+          <button class="small-button icon-button" type="button" title="Close" aria-label="Close preview dialog" @click="showPreviewDialog = false"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
         <pre class="json-template-saved-preview">{{ previewText || "{}" }}</pre>
       </div>

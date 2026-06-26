@@ -13,10 +13,13 @@
       @delete-group="deleteGroup"
       @move-item="submitMovePipeline"
       @delete-item="handleCollectionDeleteItem"
+      @new-item="createAndSaveNewPipeline"
+      @clone-item="clonePipelineFromCollection"
       @collapse-change="sidebarCollapsed = $event"
     />
 
     <section class="workspace-shell">
+      <template v-if="hasActivePipeline">
       <div class="request-bar request-bar-top">
         <select v-model="editor.method" class="request-method-select compact-select">
           <option>POST</option>
@@ -27,6 +30,26 @@
         </select>
         <div class="meta-input-save-wrap request-url-save-wrap">
           <input v-model.trim="editor.url" class="request-url-input" placeholder="Input API URL" />
+          <button
+            class="small-button request-url-action-button"
+            type="button"
+            :disabled="savingPipeline"
+            title="Create a blank pipeline in Ungrouped"
+            aria-label="Create new blank pipeline"
+            @click="createAndSaveNewPipeline"
+          >
+            new
+          </button>
+          <button
+            class="small-button request-url-action-button"
+            type="button"
+            :disabled="savingPipeline || !editor.name"
+            title="Clone current pipeline in its group"
+            aria-label="Clone current pipeline"
+            @click="cloneCurrentPipeline"
+          >
+            clone
+          </button>
           <button
             class="small-button icon-button meta-save-button"
             type="button"
@@ -263,7 +286,7 @@
                           type="button"
                           title="保存标注图片"
                           aria-label="保存标注图片"
-                          :disabled="!currentVisualizationPath || visualizationSaving"
+                          :disabled="!canSaveCurrentVisualization || visualizationSaving"
                           @click="openVisualizationSaveDialog"
                         >
                           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -277,12 +300,19 @@
                         </div>
                       </div>
                     </div>
-                    <div class="response-image-preview-stage">
+                    <div
+                      ref="previewStageRef"
+                      class="response-image-preview-stage"
+                      tabindex="0"
+                      role="region"
+                      aria-label="Image preview. Use left and right arrow keys to switch images."
+                      @mousedown="focusPreviewNavigation"
+                      @keydown.left.prevent="selectPreviewByOffset(-1)"
+                      @keydown.right.prevent="selectPreviewByOffset(1)"
+                    >
                       <div v-if="gtGenerating && previewMode === 'gt'" class="preview-status-message">正在生成 GT 标注图...</div>
-                      <img v-else-if="currentVisualizationPath" :src="imageContentUrl(currentVisualizationPath)" :alt="baseName(selectedImagePath)" />
-                      <div v-else class="preview-status-message">
-                        {{ previewMode === 'pred' ? '当前图片没有 Pred 可视化缓存。' : gtPreviewMessage }}
-                      </div>
+                      <img v-else-if="currentPreviewPath" :src="imageContentUrl(currentPreviewPath)" :alt="baseName(selectedImagePath)" />
+                      <div v-else class="preview-status-message">当前图片不可用。</div>
                     </div>
                   </div>
                   <div v-else class="empty-state compact-empty-state">Select an image to preview.</div>
@@ -352,11 +382,12 @@
 
               <div v-if="queueLoading" class="empty-state compact-empty-state">Loading images...</div>
               <div v-else-if="!responseQueue.length" class="empty-state compact-empty-state">Select an image or folder first.</div>
-              <div v-else class="response-list-shell">
+              <div v-else ref="responseListShellRef" class="response-list-shell">
                 <div
                   v-for="item in filteredResponseQueue"
                   :key="item.imagePath"
                   class="response-list-item"
+                  :data-response-image-path="item.imagePath"
                   :class="[item.status, { active: selectedImagePath === item.imagePath }]"
                   role="button"
                   tabindex="0"
@@ -396,24 +427,27 @@
           </div>
         </section>
       </div>
+      </template>
+
+      <div v-else class="empty-pipeline-page">
+        <div class="empty-pipeline-card">
+          <p class="eyebrow">Pipeline</p>
+          <h2>请选择或新建一个 pipeline</h2>
+          <p>可以从左侧 Collections 选择已有 pipeline，或新建一个空白 pipeline。</p>
+          <button
+            class="small-button primary-button"
+            type="button"
+            :disabled="savingPipeline"
+            @click="createAndSaveNewPipeline"
+          >
+            New pipeline
+          </button>
+        </div>
+      </div>
     </section>
 
     <div v-if="showFileBrowser" class="file-browser-backdrop" @click.self="closeFileBrowser">
-      <div class="file-browser-dialog" :data-upload-parent-path="uploadParentPath">
-        <div class="file-browser-dialog-header browse-dialog-header-minimal">
-          <button
-            class="small-button icon-button file-browser-close-button"
-            type="button"
-            title="Close"
-            aria-label="Close"
-            @click="closeFileBrowser"
-          >
-            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 6l12 12M18 6 6 18" />
-            </svg>
-          </button>
-        </div>
-
+      <div class="file-browser-dialog file-browser-dialog-single-panel" :data-upload-parent-path="uploadParentPath">
         <FileSystemTree
           :root-node="rootNode"
           :selected-path="activePath"
@@ -431,32 +465,42 @@
           @highlight="selectUploadParent"
           @toggle="toggleNode"
           @load-more="loadMoreChildren"
-        />
+        >
+          <template #header-actions>
+            <button
+              class="small-button icon-button file-browser-close-button"
+              type="button"
+              title="Close"
+              aria-label="Close"
+              @click="closeFileBrowser"
+            >
+              <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </template>
+        </FileSystemTree>
       </div>
     </div>
 
     <div v-if="resultsBrowser.visible" class="file-browser-backdrop" @click.self="closeResultsBrowser">
-      <div class="file-browser-dialog">
-        <div class="file-browser-dialog-header">
-          <div>
-            <p class="eyebrow">Pipeline Results</p>
-            <h3>选择结果文件夹</h3>
-          </div>
-          <button class="small-button" type="button" @click="closeResultsBrowser">关闭</button>
-        </div>
-
+      <div class="file-browser-dialog file-browser-dialog-panel-with-footer">
         <FileSystemTree
           :root-node="resultsRootNode"
           :selected-path="resultsBrowser.selectedPath"
+          eyebrow=""
           title="运行结果"
-          eyebrow="results/{pipeline}/post"
           loading-message="加载中..."
           :filter-loader="fetchFilteredChildren"
           @refresh="reloadResultsRoot"
           @select="selectResultsPath"
           @toggle="toggleNode"
           @load-more="loadMoreChildren"
-        />
+        >
+          <template #header-actions>
+            <button class="small-button icon-button file-browser-close-button" type="button" title="Close" aria-label="Close results browser" @click="closeResultsBrowser"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+          </template>
+        </FileSystemTree>
 
         <div class="file-browser-dialog-footer">
           <div class="file-browser-path-preview">
@@ -476,13 +520,7 @@
     </div>
 
     <div v-if="gtBrowser.visible" class="file-browser-backdrop" @click.self="closeGTBrowser">
-      <div class="file-browser-dialog">
-        <div class="file-browser-dialog-header">
-          <div><p class="eyebrow">Ground Truth</p><h3>选择标注文件夹</h3></div>
-          <button class="small-button icon-button file-browser-close-button" type="button" aria-label="Close GT browser" @click="closeGTBrowser">
-            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-          </button>
-        </div>
+      <div class="file-browser-dialog file-browser-dialog-panel-with-footer">
         <FileSystemTree
           :root-node="gtRootNode"
           :selected-path="gtBrowser.selectedPath"
@@ -495,7 +533,11 @@
           @highlight="highlightGTPath"
           @toggle="toggleNode"
           @load-more="loadMoreChildren"
-        />
+        >
+          <template #header-actions>
+            <button class="small-button icon-button file-browser-close-button" type="button" title="Close" aria-label="Close GT browser" @click="closeGTBrowser"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+          </template>
+        </FileSystemTree>
         <div class="file-browser-dialog-footer">
           <div class="file-browser-path-preview"><span>双击文件夹确认</span><strong>{{ gtBrowser.selectedPath || '未选择' }}</strong></div>
         </div>
@@ -504,7 +546,7 @@
 
     <div v-if="showGTNamesDialog" class="json-import-backdrop" @click.self="showGTNamesDialog = false">
       <div class="json-import-dialog gt-names-dialog">
-        <div class="json-import-dialog-header"><h4>GT 类别名称</h4><button class="small-button" type="button" @click="showGTNamesDialog = false">关闭</button></div>
+        <div class="json-import-dialog-header"><h4>GT 类别名称</h4><button class="small-button icon-button" type="button" title="关闭" aria-label="关闭 GT 类别名称弹窗" @click="showGTNamesDialog = false"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button></div>
         <p class="gt-dialog-hint">每行一个类别，行号从 0 开始，对应 YOLO class_id。</p>
         <textarea v-model="gtNamesDraft" class="gt-names-textarea" placeholder="person&#10;car&#10;bicycle"></textarea>
         <div class="json-import-dialog-footer"><button class="small-button primary-button" type="button" @click="saveGTNames">保存并生成 GT</button></div>
@@ -513,7 +555,7 @@
 
     <div v-if="visualizationSaveDialog.visible" class="json-import-backdrop" @click.self="closeVisualizationSaveDialog">
       <div class="json-import-dialog visualization-save-dialog">
-        <div class="json-import-dialog-header"><h4>保存 {{ previewMode === 'pred' ? 'Pred' : 'GT' }} 标注图片？</h4><button class="small-button" type="button" @click="closeVisualizationSaveDialog">取消</button></div>
+        <div class="json-import-dialog-header"><h4>保存 {{ previewMode === 'pred' ? 'Pred' : 'GT' }} 标注图片？</h4><button class="small-button icon-button" type="button" title="关闭" aria-label="关闭保存确认弹窗" @click="closeVisualizationSaveDialog"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button></div>
         <p>缓存图片只有确认后才会保存到后端本地。</p>
         <div v-if="visualizationSaveError" class="tool-alert error">{{ visualizationSaveError }}</div>
         <div class="visualization-save-actions">
@@ -524,19 +566,11 @@
     </div>
 
     <div v-if="assetReader.visible" class="file-browser-backdrop" @click.self="closeAssetReader">
-      <div class="file-browser-dialog">
-        <div class="file-browser-dialog-header">
-          <div>
-            <p class="eyebrow">File System</p>
-            <h3>Read {{ assetReader.kind === "mapping" ? "响应映射" : "请求配置" }} JSON</h3>
-          </div>
-          <button class="small-button" type="button" @click="closeAssetReader">Close</button>
-        </div>
-
+      <div class="file-browser-dialog file-browser-dialog-panel-with-footer">
         <FileSystemTree
           :root-node="rootNode"
           :selected-path="assetReader.selectedPath"
-          title="JSON Files"
+          :title="`Read ${assetReader.kind === 'mapping' ? '响应映射' : '请求配置'} JSON`"
           eyebrow="Project Root"
           loading-message="Loading..."
           :filter-loader="fetchJsonOnlyChildren"
@@ -544,7 +578,11 @@
           @select="selectAssetPath"
           @toggle="toggleNode"
           @load-more="loadMoreChildren"
-        />
+        >
+          <template #header-actions>
+            <button class="small-button icon-button file-browser-close-button" type="button" title="Close" aria-label="Close asset reader" @click="closeAssetReader"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+          </template>
+        </FileSystemTree>
 
         <div class="file-browser-dialog-footer">
           <div class="file-browser-path-preview">
@@ -561,7 +599,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import FileSystemTree from "./components/FileSystemTree.vue";
 import GroupedCollectionSidebar from "./components/GroupedCollectionSidebar.vue";
 import JsonFieldBuilder from "./components/JsonFieldBuilder.vue";
@@ -599,6 +637,8 @@ const gtGenerating = ref(false);
 const visualizationSaving = ref(false);
 const visualizationSaveError = ref("");
 const selectedImagePath = ref("");
+const previewStageRef = ref(null);
+const responseListShellRef = ref(null);
 const responseStatusFilter = ref("all");
 const responseQueue = ref([]);
 const queueLoading = ref(false);
@@ -650,6 +690,7 @@ const gtBrowser = reactive({ visible: false, selectedPath: "" });
 const visualizationSaveDialog = reactive({ visible: false });
 
 const editor = reactive(createEmptyEditor());
+const hasActivePipeline = computed(() => Boolean(persistedPipelineName.value || editor.name));
 
 const rootNode = ref(
   createTreeNode({
@@ -671,6 +712,12 @@ const currentVisualizationPath = computed(() => {
     ? item.predCachePath || item.predSavedPath || ""
     : item.gtCachePath || item.gtSavedPath || "";
 });
+
+const currentPreviewPath = computed(() => currentVisualizationPath.value || selectedImagePath.value || "");
+
+const canSaveCurrentVisualization = computed(() =>
+  Boolean(selectedImagePath.value) && (previewMode.value === "pred" || Boolean(gtLabelDir.value)),
+);
 
 const gtPreviewMessage = computed(() => {
   if (!gtNames.value.length) return "请先填写 GT 类别名称。";
@@ -791,6 +838,41 @@ watch(jsonDependencyReady, (ready) => {
   }
 });
 
+watch(selectedImagePath, () => {
+  scrollSelectedResponseIntoView();
+});
+
+function focusPreviewNavigation() {
+  previewStageRef.value?.focus({ preventScroll: true });
+}
+
+function selectPreviewByOffset(offset) {
+  const visibleItems = filteredResponseQueue.value.length ? filteredResponseQueue.value : responseQueue.value;
+  if (!visibleItems.length) {
+    return;
+  }
+  const currentIndex = visibleItems.findIndex((item) => item.imagePath === selectedImagePath.value);
+  const baseIndex = currentIndex >= 0 ? currentIndex : offset > 0 ? -1 : visibleItems.length;
+  const nextIndex = Math.min(visibleItems.length - 1, Math.max(0, baseIndex + offset));
+  const nextItem = visibleItems[nextIndex];
+  if (nextItem?.imagePath && nextItem.imagePath !== selectedImagePath.value) {
+    selectedImagePath.value = nextItem.imagePath;
+  }
+}
+
+function scrollSelectedResponseIntoView() {
+  nextTick(() => {
+    const shell = responseListShellRef.value;
+    if (!shell || !selectedImagePath.value) {
+      return;
+    }
+    const selectedRow = Array.from(shell.querySelectorAll("[data-response-image-path]")).find(
+      (element) => element.dataset.responseImagePath === selectedImagePath.value,
+    );
+    selectedRow?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+}
+
 function createEmptyEditor() {
   return {
     name: "",
@@ -867,6 +949,7 @@ function switchRequestTab(tab) {
   formError.value = "";
   activeRequestTab.value = tab.id;
 }
+
 
 function resetEditor(data = null, hydrateSaved = false) {
   const nextEditor = data || createEmptyEditor();
@@ -1217,9 +1300,13 @@ function closeVisualizationSaveDialog() {
 async function saveVisualizations(scope) {
   const cacheKey = previewMode.value === "pred" ? "predCachePath" : "gtCachePath";
   const sourceItems = scope === "current" ? [selectedResult.value] : responseQueue.value;
-  const imagePaths = sourceItems.filter((item) => item?.[cacheKey]).map((item) => item.imagePath);
+  const imagePaths = sourceItems.filter((item) => item?.imagePath).map((item) => item.imagePath);
   if (!imagePaths.length) {
-    visualizationSaveError.value = "没有可保存的缓存标注图片。";
+    visualizationSaveError.value = "没有可保存的图片。";
+    return;
+  }
+  if (previewMode.value === "gt" && !gtLabelDir.value) {
+    visualizationSaveError.value = "请先选择 GT 标注文件夹。";
     return;
   }
 
@@ -1237,7 +1324,9 @@ async function saveVisualizations(scope) {
     const savedKey = previewMode.value === "pred" ? "predSavedPath" : "gtSavedPath";
     responseQueue.value = responseQueue.value.map((item) => {
       const result = resultMap.get(item.imagePath);
-      return result?.savedPath ? { ...item, [savedKey]: result.savedPath } : item;
+      return result?.savedPath
+        ? { ...item, [cacheKey]: result.cachePath || item[cacheKey] || null, [savedKey]: result.savedPath }
+        : item;
     });
     const failed = (data.items || []).filter((item) => item.error);
     if (failed.length) {
@@ -1288,8 +1377,8 @@ async function openResultsBrowser() {
   resultsBrowser.visible = true;
   resultsBrowser.selectedPath = "";
   resultsRootNode.value = createTreeNode({
-    name: editor.name,
-    path: `/data/fuxing/results/${editor.name}/post`,
+    name: "/data",
+    path: "/data",
     type: "directory",
     hasChildren: true,
   });
@@ -1379,13 +1468,88 @@ async function readSelectedAsset() {
 }
 
 function createNewPipeline() {
+  clearCurrentPipelineState();
+  resetEditor({ ...createEmptyEditor(), inputPath: editor.inputPath }, false);
+}
+
+function clearCurrentPipelineState() {
   formError.value = "";
   formSuccess.value = "";
   runError.value = "";
   runResult.value = null;
   responseQueue.value = [];
   selectedImagePath.value = "";
-  resetEditor({ ...createEmptyEditor(), inputPath: editor.inputPath }, false);
+}
+
+async function createAndSaveNewPipeline(payload = {}) {
+  clearCurrentPipelineState();
+  const groupName = String(payload?.groupName || ungroupedLabel).trim() || ungroupedLabel;
+  const name = nextAvailablePipelineName("new_pipeline");
+  resetEditor(
+    {
+      ...createEmptyEditor(),
+      name,
+      displayName: name,
+      groupName,
+      url: "http://localhost",
+      inputPath: editor.inputPath,
+    },
+    false,
+  );
+  await savePipeline();
+}
+
+async function clonePipelineFromCollection(payload = {}) {
+  const item = payload?.item;
+  if (!item?.name) {
+    return;
+  }
+  if (item.name !== editor.name) {
+    await loadPipeline(item);
+  }
+  await cloneCurrentPipeline();
+}
+
+async function cloneCurrentPipeline() {
+  formError.value = "";
+  formSuccess.value = "";
+  const sourceName = String(editor.name || "").trim();
+  if (!sourceName) {
+    formError.value = "Please select or save a pipeline before cloning.";
+    window.alert(formError.value);
+    return;
+  }
+  const clonedName = sourceName + "_copy";
+  if (pipelineItems.value.some((item) => item.name === clonedName)) {
+    formError.value = 'Pipeline "' + clonedName + '" already exists.';
+    window.alert(formError.value);
+    return;
+  }
+  const currentImagePath = editor.inputPath;
+  resetEditor(
+    {
+      ...buildPipelinePayload(),
+      originalName: null,
+      name: clonedName,
+      displayName: String(editor.displayName || sourceName) + "_copy",
+      groupName: editor.groupName || ungroupedLabel,
+      inputPath: currentImagePath,
+    },
+    false,
+  );
+  await savePipeline();
+}
+
+function nextAvailablePipelineName(baseName) {
+  const existing = new Set(pipelineItems.value.map((item) => item.name));
+  if (!existing.has(baseName)) {
+    return baseName;
+  }
+  let suffix = 2;
+  while (existing.has(baseName + "_" + suffix)) {
+    suffix += 1;
+  }
+  return baseName + "_" + suffix;
 }
 
 async function loadPipelineList() {
@@ -1416,6 +1580,7 @@ async function loadPipeline(itemOrName) {
       ...data,
       inputPath: currentImagePath,
     }, true);
+    activeWorkspaceView.value = "request";
     if (editor.inputPath) {
       await loadResponseQueue(editor.inputPath);
     }
@@ -1710,6 +1875,7 @@ async function savePipeline() {
     const data = await response.json();
     const currentImagePath = editor.inputPath;
     resetEditor({ ...data.pipeline, inputPath: currentImagePath }, true);
+    activeWorkspaceView.value = "request";
     formSuccess.value = data.message;
     await loadPipelineList();
   } catch (error) {
@@ -1814,9 +1980,6 @@ async function loadResponseQueue(path) {
       rawResponse: null,
       error: null,
     }));
-    if (editor.name && responseQueue.value.length) {
-      await loadSavedRunResults(inputPath);
-    }
     selectedImagePath.value = responseQueue.value[0]?.imagePath || "";
   } catch (error) {
     runError.value = error.message;
@@ -1860,11 +2023,11 @@ function applyRunItems(items) {
   });
 }
 
-async function requestPipelineRun(inputPath, clearVisualizationCache = false) {
+async function requestPipelineRun(inputPath) {
   const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ inputPath, saveResults: true, clearVisualizationCache }),
+    body: JSON.stringify({ inputPath, saveResults: true }),
   });
   if (!response.ok) {
     throw await responseToError(response, "Failed to run pipeline");
@@ -1890,9 +2053,9 @@ async function runAllImages() {
   );
   const allItems = [];
   try {
-    for (const [index, item] of selectedItems.entries()) {
+    for (const item of selectedItems) {
       try {
-        const data = await requestPipelineRun(item.imagePath, index === 0);
+        const data = await requestPipelineRun(item.imagePath);
         allItems.push(...(data.items || []));
         applyRunItems(data.items);
       } catch (error) {
@@ -1959,7 +2122,7 @@ async function runSingleImage(item) {
     queueItem.imagePath === item.imagePath ? { ...queueItem, sending: true } : queueItem,
   );
   try {
-    const data = await requestPipelineRun(item.imagePath, true);
+    const data = await requestPipelineRun(item.imagePath);
     applyRunItems(data.items);
     activeResponseTab.value = "raw-response";
   } catch (error) {

@@ -52,9 +52,9 @@
           <div>
             <p class="eyebrow">Schema Editor</p>
             <h4>{{ title }}</h4>
-            <p>Edit with structured fields or raw JSON. Press Ctrl+S to save.</p>
+            <p>Edit with structured fields or raw JSON.</p>
           </div>
-          <button class="small-button" type="button" @click="closeEditor">Close</button>
+          <button class="small-button icon-button" type="button" title="Close" aria-label="Close schema editor" @click="closeEditor"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
 
         <div class="json-schema-edit-toolbar">
@@ -83,6 +83,9 @@
 
           <div class="json-schema-edit-actions">
             <button class="small-button" type="button" @click="clearEditor">Clear</button>
+            <button class="small-button primary-button" type="button" :disabled="saving" @click="saveEditor">
+              {{ saving ? "Saving..." : "Save" }}
+            </button>
             <button v-if="editorMode === 'tree'" class="small-button" type="button" @click="addRootField">Add Field</button>
           </div>
         </div>
@@ -104,15 +107,6 @@
           <div v-if="editorError" class="tool-alert error">{{ editorError }}</div>
         </div>
 
-        <footer class="json-schema-edit-footer">
-          <span>Ctrl+S to save</span>
-          <div class="tool-form-actions">
-            <button class="small-button" type="button" @click="closeEditor">Cancel</button>
-            <button class="small-button primary-button" type="button" :disabled="saving" @click="saveEditor">
-              {{ saving ? "Saving..." : "Save" }}
-            </button>
-          </div>
-        </footer>
       </div>
     </div>
   </section>
