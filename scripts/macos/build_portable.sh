@@ -76,7 +76,7 @@ RELEASE_ROOT="$ROOT/release/macos"
 PACKAGE_DIR="$RELEASE_ROOT/fuxing"
 FINAL_PACKAGE_DIR="$PACKAGE_DIR"
 FRONTEND_DIST="$ROOT/frontend/dist"
-WHEEL="$ROOT/dsetkit-0.3.1-py3-none-any.whl"
+WHEEL="$ROOT/dsetkit-0.4.0-py3-none-any.whl"
 
 step() {
   echo "==> $1"

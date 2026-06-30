@@ -3,7 +3,6 @@
     <div class="template-editor-toolbar">
       <span class="template-editor-title">响应映射</span>
       <div class="json-template-actions">
-        <button class="small-button" type="button" @click="$emit('read')">Read</button>
         <button class="small-button primary-button" type="button" @click="$emit('save')">Save</button>
         <button class="small-button" type="button" @click="showPreview = true">Preview</button>
       </div>

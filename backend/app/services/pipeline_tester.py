@@ -455,8 +455,8 @@ def load_pipeline_run_results(
                 elapsedMs=metadata.get("elapsed_ms"),
                 parsed=parsed,
                 error=metadata.get("error"),
-                predCachePath=get_pred_cache_path(name, metadata["image_path"]),
-                predSavedPath=get_pred_saved_path(name, metadata["image_path"]),
+                predCachePath=metadata.get("pred_cache_path") or get_pred_cache_path(name, metadata["image_path"]),
+                predSavedPath=None,
             )
         except Exception:
             continue
@@ -490,8 +490,9 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
         clear_pred_cache(name)
 
     run_dir = None
+    cache_bucket = _run_bucket_name(datetime.now())
     if request.saveResults:
-        timestamp = _run_bucket_name(datetime.now())
+        timestamp = cache_bucket
         run_dir = RESULTS_ROOT / name / "post" / timestamp
         run_dir.mkdir(parents=True, exist_ok=True)
         _prune_run_directories(run_dir.parent, keep=RUN_OUTPUT_RETENTION_FOLDERS)
@@ -523,7 +524,7 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
 
             pred_cache_path = None
             try:
-                pred_cache_path = render_pred_cache(name, str(image_path), parsed, plot_fields)
+                pred_cache_path = render_pred_cache(name, str(image_path), parsed, plot_fields, cache_bucket)
             except Exception as plot_exc:
                 logger.exception("Pred visualization failed pipeline_name={} image_path={} error={}", name, image_path, plot_exc)
 
@@ -541,7 +542,7 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
         except Exception as exc:
             pred_cache_path = None
             try:
-                pred_cache_path = render_pred_cache(name, str(image_path), [], plot_fields)
+                pred_cache_path = render_pred_cache(name, str(image_path), [], plot_fields, cache_bucket)
             except Exception as plot_exc:
                 logger.exception("Original image cache failed pipeline_name={} image_path={} error={}", name, image_path, plot_exc)
             item = RunPipelineItem(
@@ -562,6 +563,7 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
             "elapsed_ms": item.elapsedMs,
             "error": item.error,
             "result_file": result_file,
+            "pred_cache_path": item.predCachePath,
         })
 
     if run_dir is not None:
@@ -576,6 +578,7 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
         sync_pred_cache(
             name,
             [entry["image_path"] for entry in summary_items if entry.get("image_path")],
+            cache_bucket,
         )
 
     return RunPipelineResponse(
@@ -589,6 +592,10 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
         savedDirectory=str(run_dir) if run_dir is not None else None,
         items=items,
     )
+
+
+def render_pipeline_pred_visualization(name: str, image_path: str, parsed: Any) -> str | None:
+    return render_pred_cache(name, image_path, parsed, _get_pipeline_plot_fields(name))
 
 
 def _get_pipeline_plot_fields(name: str) -> list[str]:

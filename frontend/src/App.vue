@@ -211,7 +211,6 @@
               :item-path-options="responseMappingPathOptions.itemPaths"
               @update:model-value="mappingModel = $event"
               @save="saveMappingAsset"
-              @read="openAssetReader('mapping')"
             />
 
             <PostConfigEditor
@@ -220,7 +219,6 @@
               :body-path-options="bodyFieldPathOptions"
               @update:model-value="postConfigModel = $event"
               @save="savePostConfigAsset"
-              @read="openAssetReader('post_config')"
             />
 
             <div v-else class="empty-state compact-empty-state">
@@ -268,30 +266,31 @@
                     <div class="response-image-preview-header">
                       <strong :title="selectedImagePath">{{ baseName(selectedImagePath) }}</strong>
                       <div class="preview-toolbar-actions">
-                        <template v-if="previewMode === 'gt'">
-                          <button class="small-button" type="button" @click="openGTNamesDialog">
-                            类别名称{{ gtNames.length ? ' (' + gtNames.length + ')' : '' }}
-                          </button>
-                          <select v-model="gtFormat" class="compact-select preview-format-select" @change="generateGTVisualizations">
-                            <option value="yolo">YOLO</option>
-                            <option value="labelme">LabelMe</option>
-                            <option value="voc">VOC</option>
-                          </select>
-                          <button class="small-button preview-label-folder" type="button" :title="gtLabelDir" @click="openGTBrowser">
-                            {{ gtLabelDir ? baseName(gtLabelDir) : '选择标注文件夹' }}
-                          </button>
-                        </template>
                         <button
-                          class="small-button icon-button preview-save-button"
+                          class="small-button icon-button preview-refresh-button"
+                          :class="{ refreshing: isRefreshingCurrentVisualization }"
                           type="button"
-                          title="保存标注图片"
-                          aria-label="保存标注图片"
-                          :disabled="!canSaveCurrentVisualization || visualizationSaving"
-                          @click="openVisualizationSaveDialog"
+                          :title="previewMode === 'pred' ? 'Refresh Pred annotations' : 'Refresh GT annotations'"
+                          :aria-label="previewMode === 'pred' ? 'Refresh Pred annotations' : 'Refresh GT annotations'"
+                          :disabled="!canRefreshCurrentVisualization"
+                          @click="refreshCurrentVisualization"
                         >
                           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M5 4h12l2 2v14H5z" />
-                            <path d="M8 4v6h8V4M8 20v-6h8v6" />
+                            <path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.76-4.24L13 11h8V3l-3.3 3.3Z" />
+                          </svg>
+                        </button>
+                        <button
+                          class="small-button icon-button preview-download-button"
+                          type="button"
+                          title="Download annotation folder"
+                          aria-label="Download annotation folder"
+                          :disabled="!canDownloadVisualizations || visualizationDownloading"
+                          @click="downloadVisualizationFolder"
+                        >
+                          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 3v12" />
+                            <path d="m7 10 5 5 5-5" />
+                            <path d="M5 21h14" />
                           </svg>
                         </button>
                         <div class="preview-mode-switch" role="group" aria-label="Pred GT view">
@@ -310,20 +309,159 @@
                       @keydown.left.prevent="selectPreviewByOffset(-1)"
                       @keydown.right.prevent="selectPreviewByOffset(1)"
                     >
-                      <div v-if="gtGenerating && previewMode === 'gt'" class="preview-status-message">正在生成 GT 标注图...</div>
-                      <img v-else-if="currentPreviewPath" :src="imageContentUrl(currentPreviewPath)" :alt="baseName(selectedImagePath)" />
+                      <div v-if="(gtGenerating || gtRefreshing) && previewMode === 'gt'" class="preview-status-message">正在生成 GT 标注图...</div>
+                      <template v-else-if="currentPreviewPath">
+                        <img :src="imageContentUrl(currentPreviewPath)" :alt="baseName(selectedImagePath)" />
+                        <div v-if="previewMode === 'gt' && selectedResult?.gtError" class="preview-warning-message">{{ selectedResult.gtError }}</div>
+                      </template>
                       <div v-else class="preview-status-message">当前图片不可用。</div>
                     </div>
                   </div>
                   <div v-else class="empty-state compact-empty-state">Select an image to preview.</div>
                 </template>
+                <template v-else-if="activeResponseTab === 'result-evaluation'">
+                  <div class="evaluation-panel">
+                    <div class="evaluation-toolbar">
+                      <label class="evaluation-threshold-field">
+                        <span>Conf</span>
+                        <input v-model.number="evaluationConfThreshold" type="number" min="0" max="1" step="0.01" />
+                      </label>
+                      <label class="evaluation-threshold-field">
+                        <span>IoU</span>
+                        <input v-model.number="evaluationIouThreshold" type="number" min="0" max="1" step="0.01" />
+                      </label>
+                      <button class="small-button primary-button" type="button" :disabled="!evaluationCanRun || evaluationRunning" @click="runResultEvaluation">
+                        {{ evaluationRunning ? 'Evaluating...' : 'Run Evaluation' }}
+                      </button>
+                    </div>
 
-                <template v-else>
-                  <div v-if="selectedResult?.parsed" class="result-json-block annotation-conversion-preview">
-                    <pre>{{ stringify(normalizedParsedResult) }}</pre>
+                    <div class="response-queue-summary evaluation-summary-line">
+                      <span>{{ evaluationPredictions.length }} images with parsed predictions</span>
+                      <span>{{ evaluationImageDir || '-' }}</span>
+                    </div>
+
+                    <div class="names-summary-panel">
+                      <strong>Names</strong>
+                      <span>{{ namesSummary }}</span>
+                      <button class="small-button" type="button" @click="openGTSettingsDialog">Edit in Settings</button>
+                    </div>
+
+                    <div v-if="evaluationError" class="tool-alert error">{{ evaluationError }}</div>
+                    <div v-else-if="!evaluationCanRun" class="empty-state compact-empty-state">Run images first, then set GT label folder and names in Settings.</div>
+
+                    <template v-if="evaluationResult?.metrics">
+                      <section class="evaluation-section">
+                        <div class="evaluation-section-title">
+                          <strong>Ground Truth Dataset</strong>
+                          <span>dsetkit.dataset</span>
+                        </div>
+                        <div class="evaluation-metrics-grid">
+                          <div class="evaluation-metric"><span>Images</span><strong>{{ evaluationResult.dataset?.images ?? 0 }}</strong></div>
+                          <div class="evaluation-metric"><span>Background</span><strong>{{ evaluationResult.dataset?.backgrounds ?? 0 }}</strong></div>
+                          <div class="evaluation-metric"><span>Instances</span><strong>{{ evaluationResult.dataset?.instances ?? 0 }}</strong></div>
+                          <div class="evaluation-metric"><span>Names</span><strong>{{ gtNames.length }}</strong></div>
+                        </div>
+                      </section>
+
+                      <section class="evaluation-section">
+                        <div class="evaluation-section-title">
+                          <strong>Evaluation Result</strong>
+                          <span>dsetkit.evaluator</span>
+                        </div>
+                        <div class="evaluation-metrics-grid">
+                          <div class="evaluation-metric"><span>Images</span><strong>{{ evaluationResult.metrics.images ?? evaluationResult.evaluatedImages }}</strong></div>
+                          <div class="evaluation-metric"><span>Instances</span><strong>{{ evaluationResult.metrics.instances ?? 0 }}</strong></div>
+                          <div class="evaluation-metric"><span>Precision</span><strong>{{ formatMetric(evaluationResult.metrics.precision) }}</strong></div>
+                          <div class="evaluation-metric"><span>Recall</span><strong>{{ formatMetric(evaluationResult.metrics.recall) }}</strong></div>
+                          <div class="evaluation-metric"><span>F1</span><strong>{{ formatMetric(evaluationResult.metrics.f1) }}</strong></div>
+                          <div class="evaluation-metric"><span>{{ evaluationApKey }}</span><strong>{{ formatMetric(evaluationResult.metrics[evaluationApKey] ?? evaluationResult.metrics.mAP) }}</strong></div>
+                        </div>
+
+                        <div class="evaluation-table-shell">
+                          <table class="evaluation-table">
+                            <thead>
+                              <tr>
+                                <th>Class</th>
+                                <th>Images</th>
+                                <th>Instances</th>
+                                <th>Precision</th>
+                                <th>Recall</th>
+                                <th>{{ evaluationApKey }}</th>
+                                <th>F1</th>
+                                <th>TP</th>
+                                <th>FP</th>
+                                <th>FN</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr v-for="row in evaluationClassRows" :key="row.name">
+                                <td>{{ row.name }}</td>
+                                <td>{{ row.images ?? 0 }}</td>
+                                <td>{{ row.instances ?? 0 }}</td>
+                                <td>{{ formatMetric(row.precision) }}</td>
+                                <td>{{ formatMetric(row.recall) }}</td>
+                                <td>{{ formatMetric(row[evaluationApKey] ?? row.ap) }}</td>
+                                <td>{{ formatMetric(row.f1) }}</td>
+                                <td>{{ row.tp ?? 0 }}</td>
+                                <td>{{ row.fp ?? 0 }}</td>
+                                <td>{{ row.fn ?? 0 }}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    </template>
                   </div>
-                  <div v-else-if="selectedResult?.error" class="tool-alert error">{{ selectedResult.error }}</div>
-                  <div v-else class="empty-state compact-empty-state">Select an image with a parsed result for annotation conversion.</div>
+                </template>
+
+                <template v-else-if="activeResponseTab === 'annotation-conversion'">
+                  <div class="annotation-conversion-panel">
+                    <div class="conversion-toolbar">
+                      <div class="preview-mode-switch" role="group" aria-label="Annotation conversion source">
+                        <button type="button" :class="{ active: conversionMode === 'pred' }" @click="conversionMode = 'pred'">Pred</button>
+                        <button type="button" :class="{ active: conversionMode === 'gt' }" @click="conversionMode = 'gt'">GT</button>
+                      </div>
+                      <label class="evaluation-threshold-field">
+                        <span>Target</span>
+                        <select v-model="conversionTargetFormat" class="compact-select">
+                          <option value="labelme">LabelMe</option>
+                          <option value="voc">VOC</option>
+                          <option value="yolo">YOLO</option>
+                        </select>
+                      </label>
+                      <button class="small-button primary-button" type="button" :disabled="!conversionCanRun || conversionRunning" @click="runAnnotationConversion">
+                        {{ conversionRunning ? 'Converting...' : 'Convert' }}
+                      </button>
+                    </div>
+
+                    <div class="names-summary-panel">
+                      <strong>Names</strong>
+                      <span>{{ namesSummary }}</span>
+                      <button class="small-button" type="button" @click="openGTSettingsDialog">Edit in Settings</button>
+                    </div>
+
+                    <label class="tool-field conversion-output-field">
+                      <span>Output Folder</span>
+                      <input v-model.trim="conversionOutDir" type="text" placeholder="Leave empty to use data/conversions/pred or GT label parent" />
+                    </label>
+
+                    <div class="response-queue-summary evaluation-summary-line">
+                      <span v-if="conversionMode === 'pred'">{{ conversionPredictions.length }} Pred images will be converted</span>
+                      <span v-else>GT folder: {{ gtLabelDir || '-' }}</span>
+                      <span>Target {{ conversionTargetFormat }}</span>
+                    </div>
+
+                    <div v-if="conversionError" class="tool-alert error">{{ conversionError }}</div>
+                    <div v-if="conversionResult" class="tool-alert success">
+                      <strong>{{ conversionResult.message }}</strong>
+                      <span v-if="conversionResult.outputDir">Output: {{ conversionResult.outputDir }}</span>
+                    </div>
+                    <div v-else-if="!conversionCanRun" class="empty-state compact-empty-state">Set names in Settings, then choose Pred results or a GT label folder to convert.</div>
+
+                    <div v-if="conversionMode === 'pred' && selectedResult?.parsed" class="result-json-block annotation-conversion-preview">
+                      <pre>{{ stringify(normalizedParsedResult) }}</pre>
+                    </div>
+                  </div>
                 </template>
               </div>
             </section>
@@ -351,13 +489,16 @@
                   <span>全选当前视图</span>
                 </label>
                 <button
-                  class="small-button response-load-results"
+                  class="small-button icon-button response-settings-button"
                   type="button"
-                  :disabled="!editor.name"
-                  title="选择结果文件夹加载"
-                  @click="openResultsBrowser"
+                  title="Preview settings"
+                  aria-label="Preview settings"
+                  @click="openGTSettingsDialog"
                 >
-                  加载结果
+                  <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+                    <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2 2 0 0 1-2.83 2.83l-.04-.04A1.8 1.8 0 0 0 15 19.45a1.8 1.8 0 0 0-1 .55V20a2 2 0 0 1-4 0v-.06a1.8 1.8 0 0 0-1-.55 1.8 1.8 0 0 0-1.98.36l-.04.04a2 2 0 0 1-2.83-2.83l.04-.04A1.8 1.8 0 0 0 4.55 15a1.8 1.8 0 0 0-.55-1H4a2 2 0 0 1 0-4h.06a1.8 1.8 0 0 0 .55-1 1.8 1.8 0 0 0-.36-1.98l-.04-.04a2 2 0 0 1 2.83-2.83l.04.04A1.8 1.8 0 0 0 9 4.55a1.8 1.8 0 0 0 1-.55V4a2 2 0 0 1 4 0v.06a1.8 1.8 0 0 0 1 .55 1.8 1.8 0 0 0 1.98-.36l.04-.04a2 2 0 0 1 2.83 2.83l-.04.04A1.8 1.8 0 0 0 19.45 9c.2.35.38.67.55 1H20a2 2 0 0 1 0 4h-.06a1.8 1.8 0 0 0-.54 1Z" />
+                  </svg>
                 </button>
                 <select v-model="responseStatusFilter" class="response-status-filter compact-select" aria-label="Filter response status">
                   <option value="all">All</option>
@@ -454,7 +595,7 @@
           :highlight-path="uploadSelectionPath"
           :title="`Data Root (${appConfig.filesystemRoot})`"
           eyebrow="File System"
-          loading-message="Loading..."
+          loading-message="加载中..."
           :filter-loader="fetchFilteredChildren"
           show-upload-button
           :upload-target-path="appConfig.datasetsRoot"
@@ -523,9 +664,9 @@
         <FileSystemTree
           :root-node="gtRootNode"
           :selected-path="gtBrowser.selectedPath"
-          :title="`Datasets (${appConfig.datasetsRoot})`"
+          :title="`Data Root (${appConfig.filesystemRoot})`"
           eyebrow="GT Labels"
-          loading-message="Loading..."
+          loading-message="加载中..."
           :filter-loader="fetchFilteredChildren"
           @refresh="reloadGTRoot"
           @select="selectGTLabelFolder"
@@ -542,24 +683,43 @@
         </div>
       </div>
     </div>
-
-    <div v-if="showGTNamesDialog" class="json-import-backdrop" @click.self="showGTNamesDialog = false">
-      <div class="json-import-dialog gt-names-dialog">
-        <div class="json-import-dialog-header"><h4>GT 类别名称</h4><button class="small-button icon-button" type="button" title="关闭" aria-label="关闭 GT 类别名称弹窗" @click="showGTNamesDialog = false"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button></div>
-        <p class="gt-dialog-hint">每行一个类别，行号从 0 开始，对应 YOLO class_id。</p>
-        <textarea v-model="gtNamesDraft" class="gt-names-textarea" placeholder="person&#10;car&#10;bicycle"></textarea>
-        <div class="json-import-dialog-footer"><button class="small-button primary-button" type="button" @click="saveGTNames">保存并生成 GT</button></div>
-      </div>
-    </div>
-
-    <div v-if="visualizationSaveDialog.visible" class="json-import-backdrop" @click.self="closeVisualizationSaveDialog">
-      <div class="json-import-dialog visualization-save-dialog">
-        <div class="json-import-dialog-header"><h4>保存 {{ previewMode === 'pred' ? 'Pred' : 'GT' }} 标注图片？</h4><button class="small-button icon-button" type="button" title="关闭" aria-label="关闭保存确认弹窗" @click="closeVisualizationSaveDialog"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button></div>
-        <p>缓存图片只有确认后才会保存到后端本地。</p>
-        <div v-if="visualizationSaveError" class="tool-alert error">{{ visualizationSaveError }}</div>
-        <div class="visualization-save-actions">
-          <button class="small-button" type="button" :disabled="visualizationSaving" @click="saveVisualizations('current')">保存当前图片</button>
-          <button class="small-button primary-button" type="button" :disabled="visualizationSaving" @click="saveVisualizations('all')">保存全部图片</button>
+<div v-if="gtSettingsDialog.visible" class="json-import-backdrop" @click.self="closeGTSettingsDialog">
+      <div class="json-import-dialog gt-settings-dialog">
+        <div class="json-import-dialog-header">
+          <h4>Preview Settings</h4>
+          <button class="small-button icon-button" type="button" title="Close" aria-label="Close GT settings" @click="closeGTSettingsDialog"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+        </div>
+        <div class="gt-settings-body">
+          <section class="gt-settings-section">
+            <div class="gt-settings-section-header">
+              <strong>Results</strong>
+              <span>Load a saved run result folder into the current queue.</span>
+            </div>
+            <button class="small-button" type="button" :disabled="!editor.name" @click="openResultsBrowser">Load Results</button>
+          </section>
+          <label class="tool-field">
+            <span>Format</span>
+            <select v-model="gtSettingsDraft.format" class="compact-select">
+              <option value="yolo">YOLO</option>
+              <option value="labelme">LabelMe</option>
+              <option value="voc">VOC</option>
+            </select>
+          </label>
+          <label class="tool-field">
+            <span>Label Folder</span>
+            <div class="gt-settings-folder-row">
+              <input v-model="gtSettingsDraft.labelDir" type="text" placeholder="Select label folder" readonly />
+              <button class="small-button" type="button" @click="openGTBrowser">Browse</button>
+            </div>
+          </label>
+          <label class="tool-field">
+            <span>Names</span>
+            <textarea v-model="gtSettingsDraft.names" class="gt-names-textarea" placeholder="person&#10;car&#10;bicycle"></textarea>
+          </label>
+        </div>
+        <div class="json-import-dialog-footer">
+          <button class="small-button" type="button" @click="closeGTSettingsDialog">Cancel</button>
+          <button class="small-button primary-button" type="button" :disabled="gtGenerating || gtRefreshing" @click="applyGTSettings">Apply</button>
         </div>
       </div>
     </div>
@@ -571,7 +731,7 @@
           :selected-path="assetReader.selectedPath"
           :title="`Read ${assetReader.kind === 'mapping' ? '响应映射' : '请求配置'} JSON`"
           eyebrow="Project Root"
-          loading-message="Loading..."
+          loading-message="加载中..."
           :filter-loader="fetchJsonOnlyChildren"
           @refresh="reloadRoot"
           @select="selectAssetPath"
@@ -618,10 +778,11 @@ const baseRequestTabs = [
 ];
 
 const responseTabs = [
-  { id: "raw-response", label: "原始响应" },
-  { id: "parsed-result", label: "解析结果" },
-  { id: "image-preview", label: "图片预览" },
-  { id: "annotation-conversion", label: "标注转换" },
+  { id: "raw-response", label: "\u539f\u59cb\u54cd\u5e94" },
+  { id: "parsed-result", label: "\u89e3\u6790\u7ed3\u679c" },
+  { id: "image-preview", label: "\u56fe\u7247\u9884\u89c8" },
+  { id: "result-evaluation", label: "\u7ed3\u679c\u8bc4\u4f30" },
+  { id: "annotation-conversion", label: "\u6807\u6ce8\u8f6c\u6362" },
 ];
 
 const activeRequestTab = ref("header");
@@ -630,11 +791,25 @@ const previewMode = ref("pred");
 const gtFormat = ref("yolo");
 const gtLabelDir = ref("");
 const gtNames = ref([]);
-const gtNamesDraft = ref("");
-const showGTNamesDialog = ref(false);
+const gtSettingsDialog = reactive({ visible: false });
+const gtSettingsDraft = reactive({ labelDir: "", format: "yolo", names: "" });
 const gtGenerating = ref(false);
-const visualizationSaving = ref(false);
-const visualizationSaveError = ref("");
+const predRefreshing = ref(false);
+const gtRefreshing = ref(false);
+const visualizationRefreshNonce = ref(0);
+const evaluationRunning = ref(false);
+const evaluationError = ref("");
+const evaluationResult = ref(null);
+const conversionMode = ref("pred");
+const conversionTargetFormat = ref("yolo");
+const conversionOutDir = ref("");
+const conversionRunning = ref(false);
+const conversionError = ref("");
+const conversionResult = ref(null);
+const evaluationConfThreshold = ref(0.5);
+const evaluationIouThreshold = ref(0.5);
+const visualizationDownloading = ref(false);
+const visualizationDownloadError = ref("");
 const selectedImagePath = ref("");
 const previewStageRef = ref(null);
 const responseListShellRef = ref(null);
@@ -687,7 +862,6 @@ const resultsRootNode = ref(null);
 const gtRootNode = ref(null);
 
 const gtBrowser = reactive({ visible: false, selectedPath: "" });
-const visualizationSaveDialog = reactive({ visible: false });
 
 const editor = reactive(createEmptyEditor());
 const hasActivePipeline = computed(() => Boolean(persistedPipelineName.value || editor.name));
@@ -708,9 +882,26 @@ const currentVisualizationPath = computed(() => {
 
 const currentPreviewPath = computed(() => currentVisualizationPath.value || selectedImagePath.value || "");
 
-const canSaveCurrentVisualization = computed(() =>
-  Boolean(selectedImagePath.value) && (previewMode.value === "pred" || Boolean(gtLabelDir.value)),
+const downloadableVisualizationItems = computed(() => {
+  const cacheKey = previewMode.value === "pred" ? "predCachePath" : "gtCachePath";
+  const savedKey = previewMode.value === "pred" ? "predSavedPath" : "gtSavedPath";
+  return responseQueue.value
+    .filter((item) => item[cacheKey] || item[savedKey])
+    .map((item) => ({ ...item, downloadPath: item[cacheKey] || item[savedKey] }));
+});
+
+const canDownloadVisualizations = computed(() => downloadableVisualizationItems.value.length > 0);
+
+const isRefreshingCurrentVisualization = computed(() =>
+  previewMode.value === "pred" ? predRefreshing.value : gtGenerating.value || gtRefreshing.value,
 );
+
+const canRefreshCurrentVisualization = computed(() => {
+  const item = selectedResult.value;
+  if (!editor.name || !item?.imagePath) return false;
+  if (previewMode.value === "pred") return Boolean(item.parsed) && !predRefreshing.value;
+  return Boolean(gtLabelDir.value && gtNames.value.length) && !gtGenerating.value && !gtRefreshing.value;
+});
 
 const gtPreviewMessage = computed(() => {
   if (!gtNames.value.length) return "请先填写 GT 类别名称。";
@@ -725,6 +916,54 @@ const filteredResponseQueue = computed(() =>
 );
 
 const selectedResponseCount = computed(() => responseQueue.value.filter((item) => item.selected).length);
+
+const evaluationPredictions = computed(() =>
+  responseQueue.value
+    .filter((item) => item.status === "success" && item.parsed)
+    .map((item) => ({ imagePath: item.imagePath, parsed: normalizeParsedResult(item.parsed, mappingModel.value) })),
+);
+const selectedSuccessfulPredictions = computed(() => {
+  const selected = responseQueue.value.filter((item) => item.selected && item.status === "success" && item.parsed);
+  const source = selected.length ? selected : responseQueue.value.filter((item) => item.status === "success" && item.parsed);
+  return source.map((item) => ({ imagePath: item.imagePath, parsed: normalizeParsedResult(item.parsed, mappingModel.value) }));
+});
+
+const conversionPredictions = computed(() => selectedSuccessfulPredictions.value);
+
+const namesSummary = computed(() => {
+  if (!gtNames.value.length) return "No names configured. Use Settings next to the image list checkbox.";
+  const visible = gtNames.value.slice(0, 8).join(", ");
+  const suffix = gtNames.value.length > 8 ? " +" + String(gtNames.value.length - 8) + " more" : "";
+  return String(gtNames.value.length) + ": " + visible + suffix + ". Edit in Settings next to the image list checkbox.";
+});
+
+const conversionCanRun = computed(() => {
+  if (!gtNames.value.length || !conversionTargetFormat.value) return false;
+  if (conversionMode.value === "pred") return conversionPredictions.value.length > 0;
+  return Boolean(evaluationImageDir.value && gtLabelDir.value && gtFormat.value);
+});
+
+const evaluationCanRun = computed(() =>
+  Boolean(evaluationPredictions.value.length && gtLabelDir.value && gtNames.value.length && editor.inputPath),
+);
+
+const evaluationImageDir = computed(() => {
+  const path = String(editor.inputPath || "").trim();
+  if (!path) return "";
+  if (responseQueue.value.length === 1 && responseQueue.value[0]?.imagePath === path) {
+    return parentDirectoryPath(path);
+  }
+  return path;
+});
+
+const evaluationClassRows = computed(() => {
+  const perClass = evaluationResult.value?.metrics?.per_class || {};
+  return Object.entries(perClass).map(([name, metrics]) => ({ name, ...metrics }));
+});
+const evaluationApKey = computed(() => {
+  const metrics = evaluationResult.value?.metrics || {};
+  return Object.keys(metrics).find((key) => key.startsWith("mAP") && key !== "mAP") || "mAP";
+});
 
 const filteredSelectedCount = computed(() =>
   filteredResponseQueue.value.filter((item) => item.selected).length,
@@ -1236,21 +1475,29 @@ function normalizeFilesystemPath(path) {
   return normalized;
 }
 
-function openGTNamesDialog() {
-  gtNamesDraft.value = gtNames.value.join("\n");
-  showGTNamesDialog.value = true;
+function openGTSettingsDialog() {
+  gtSettingsDraft.labelDir = gtLabelDir.value;
+  gtSettingsDraft.format = gtFormat.value;
+  gtSettingsDraft.names = gtNames.value.join("\n");
+  gtSettingsDialog.visible = true;
 }
 
-async function saveGTNames() {
-  gtNames.value = gtNamesDraft.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-  showGTNamesDialog.value = false;
+function closeGTSettingsDialog() {
+  gtSettingsDialog.visible = false;
+}
+
+async function applyGTSettings() {
+  gtLabelDir.value = String(gtSettingsDraft.labelDir || "").trim();
+  gtFormat.value = gtSettingsDraft.format || "yolo";
+  gtNames.value = gtSettingsDraft.names.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+  gtSettingsDialog.visible = false;
   await generateGTVisualizations();
 }
 
 async function openGTBrowser() {
   gtBrowser.visible = true;
-  gtBrowser.selectedPath = gtLabelDir.value;
-  gtRootNode.value = createRootNode(appConfig.datasetsRoot, "Datasets");
+  gtBrowser.selectedPath = gtSettingsDialog.visible ? gtSettingsDraft.labelDir : gtLabelDir.value;
+  gtRootNode.value = createRootNode(appConfig.filesystemRoot, "Data Root");
   gtRootNode.value.expanded = true;
   await loadChildren(gtRootNode.value, true);
 }
@@ -1265,9 +1512,13 @@ function highlightGTPath(node) {
 
 async function selectGTLabelFolder(node) {
   if (node.type !== "directory") return;
-  gtLabelDir.value = node.path;
   gtBrowser.selectedPath = node.path;
   gtBrowser.visible = false;
+  if (gtSettingsDialog.visible) {
+    gtSettingsDraft.labelDir = node.path;
+    return;
+  }
+  gtLabelDir.value = node.path;
   await generateGTVisualizations();
 }
 
@@ -1300,6 +1551,7 @@ async function generateGTVisualizations() {
       const result = resultMap.get(item.imagePath);
       return result ? { ...item, gtCachePath: result.cachePath || null, gtSavedPath: null, gtError: result.error || "" } : item;
     });
+    bumpVisualizationRefresh();
   } catch (error) {
     runError.value = error.message;
   } finally {
@@ -1307,58 +1559,182 @@ async function generateGTVisualizations() {
   }
 }
 
-function openVisualizationSaveDialog() {
-  visualizationSaveError.value = "";
-  visualizationSaveDialog.visible = true;
-}
-
-function closeVisualizationSaveDialog() {
-  visualizationSaveDialog.visible = false;
-  visualizationSaveError.value = "";
-}
-
-async function saveVisualizations(scope) {
-  const cacheKey = previewMode.value === "pred" ? "predCachePath" : "gtCachePath";
-  const sourceItems = scope === "current" ? [selectedResult.value] : responseQueue.value;
-  const imagePaths = sourceItems.filter((item) => item?.imagePath).map((item) => item.imagePath);
-  if (!imagePaths.length) {
-    visualizationSaveError.value = "没有可保存的图片。";
-    return;
-  }
-  if (previewMode.value === "gt" && !gtLabelDir.value) {
-    visualizationSaveError.value = "请先选择 GT 标注文件夹。";
-    return;
-  }
-
-  visualizationSaving.value = true;
-  visualizationSaveError.value = "";
+async function runResultEvaluation() {
+  if (!evaluationCanRun.value || evaluationRunning.value) return;
+  evaluationRunning.value = true;
+  evaluationError.value = "";
   try {
-    const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/visualizations/save`, {
+    const response = await fetch("/api/dsetkit/evaluate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: previewMode.value, imagePaths, labelDir: previewMode.value === "gt" ? gtLabelDir.value : null }),
+      body: JSON.stringify({
+        imageDir: evaluationImageDir.value,
+        labelDir: gtLabelDir.value,
+        sourceFormat: gtFormat.value,
+        names: gtNames.value,
+        predictions: evaluationPredictions.value,
+        confThreshold: Number(evaluationConfThreshold.value),
+        iouThreshold: Number(evaluationIouThreshold.value),
+      }),
     });
-    if (!response.ok) throw await responseToError(response, "Failed to save visualizations");
+    if (!response.ok) throw await responseToError(response, "Failed to evaluate results");
+    evaluationResult.value = await response.json();
+  } catch (error) {
+    evaluationError.value = error.message;
+  } finally {
+    evaluationRunning.value = false;
+  }
+}
+async function runAnnotationConversion() {
+  if (!conversionCanRun.value || conversionRunning.value) return;
+  conversionRunning.value = true;
+  conversionError.value = "";
+  conversionResult.value = null;
+  try {
+    const isPred = conversionMode.value === "pred";
+    const endpoint = isPred ? "/api/dsetkit/convert/pred" : "/api/dsetkit/convert";
+    const payload = isPred
+      ? {
+          targetFormat: conversionTargetFormat.value,
+          names: gtNames.value,
+          predictions: conversionPredictions.value,
+          outDir: conversionOutDir.value || null,
+        }
+      : {
+          imageDir: evaluationImageDir.value,
+          labelDir: gtLabelDir.value,
+          sourceFormat: gtFormat.value,
+          targetFormat: conversionTargetFormat.value,
+          names: gtNames.value,
+          outDir: conversionOutDir.value || null,
+        };
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw await responseToError(response, "Failed to convert annotations");
+    conversionResult.value = await response.json();
+  } catch (error) {
+    conversionError.value = error.message;
+  } finally {
+    conversionRunning.value = false;
+  }
+}
+
+async function refreshCurrentVisualization() {
+  if (previewMode.value === "pred") {
+    await refreshCurrentPredVisualization();
+  } else {
+    await refreshCurrentGTVisualization();
+  }
+}
+async function refreshCurrentPredVisualization() {
+  const item = selectedResult.value;
+  if (!editor.name || !item?.imagePath || !item?.parsed || predRefreshing.value) return;
+  predRefreshing.value = true;
+  runError.value = "";
+  try {
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/visualizations/pred`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imagePath: item.imagePath, parsed: item.parsed }),
+    });
+    if (!response.ok) throw await responseToError(response, "Failed to refresh Pred visualization");
     const data = await response.json();
-    const resultMap = new Map((data.items || []).map((item) => [item.imagePath, item]));
-    const savedKey = previewMode.value === "pred" ? "predSavedPath" : "gtSavedPath";
-    responseQueue.value = responseQueue.value.map((item) => {
-      const result = resultMap.get(item.imagePath);
-      return result?.savedPath
-        ? { ...item, [cacheKey]: result.cachePath || item[cacheKey] || null, [savedKey]: result.savedPath }
-        : item;
+    const result = data.items?.[0];
+    if (result?.error) throw new Error(result.error);
+    responseQueue.value = responseQueue.value.map((queueItem) =>
+      queueItem.imagePath === item.imagePath
+        ? { ...queueItem, predCachePath: result?.cachePath || queueItem.predCachePath || null, predSavedPath: null }
+        : queueItem,
+    );
+    bumpVisualizationRefresh();
+  } catch (error) {
+    runError.value = error.message;
+  } finally {
+    predRefreshing.value = false;
+  }
+}
+
+async function refreshCurrentGTVisualization() {
+  const item = selectedResult.value;
+  if (!editor.name || !item?.imagePath || !gtLabelDir.value || !gtNames.value.length || gtRefreshing.value || gtGenerating.value) return;
+  gtRefreshing.value = true;
+  runError.value = "";
+  try {
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/visualizations/gt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imagePaths: [item.imagePath],
+        labelDir: gtLabelDir.value,
+        format: gtFormat.value,
+        names: gtNames.value,
+      }),
     });
-    const failed = (data.items || []).filter((item) => item.error);
-    if (failed.length) {
-      visualizationSaveError.value = failed.map((item) => baseName(item.imagePath) + ": " + item.error).join("; ");
-    } else {
-      closeVisualizationSaveDialog();
+    if (!response.ok) throw await responseToError(response, "Failed to refresh GT visualization");
+    const data = await response.json();
+    const result = data.items?.[0];
+    responseQueue.value = responseQueue.value.map((queueItem) =>
+      queueItem.imagePath === item.imagePath
+        ? { ...queueItem, gtCachePath: result?.cachePath || null, gtSavedPath: null, gtError: result?.error || "" }
+        : queueItem,
+    );
+    bumpVisualizationRefresh();
+  } catch (error) {
+    runError.value = error.message;
+  } finally {
+    gtRefreshing.value = false;
+  }
+}
+
+async function downloadVisualizationFolder() {
+  const items = downloadableVisualizationItems.value;
+  if (!items.length || visualizationDownloading.value) return;
+  if (!window.showDirectoryPicker) {
+    runError.value = "Your browser does not support choosing a local download folder.";
+    return;
+  }
+
+  visualizationDownloading.value = true;
+  visualizationDownloadError.value = "";
+  try {
+    const rootHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    const folderName = previewMode.value === "pred" ? "pred" : "GT";
+    const outputHandle = await rootHandle.getDirectoryHandle(folderName, { create: true });
+    for (const item of items) {
+      const blob = await fetchVisualizationBlob(item.downloadPath);
+      const fileHandle = await outputHandle.getFileHandle(downloadFileName(item), { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
     }
   } catch (error) {
-    visualizationSaveError.value = error.message;
+    if (error?.name !== "AbortError") {
+      visualizationDownloadError.value = error.message || "Download failed.";
+      runError.value = visualizationDownloadError.value;
+    }
   } finally {
-    visualizationSaving.value = false;
+    visualizationDownloading.value = false;
   }
+}
+
+async function fetchVisualizationBlob(path) {
+  const response = await fetch(visualizationContentUrl(path));
+  if (!response.ok) {
+    throw await responseToError(response, "Failed to download visualization");
+  }
+  return response.blob();
+}
+
+function visualizationContentUrl(path) {
+  const params = new URLSearchParams({ path });
+  return "/api/pipelines/" + encodeURIComponent(editor.name) + "/visualizations/content?" + params.toString();
+}
+
+function downloadFileName(item) {
+  return baseName(item.downloadPath) || (baseName(item.imagePath) || "annotation") + ".jpg";
 }
 
 async function selectPath(node) {
@@ -1394,6 +1770,7 @@ async function openResultsBrowser() {
   if (!editor.name) {
     return;
   }
+  gtSettingsDialog.visible = false;
   resultsBrowser.visible = true;
   resultsBrowser.selectedPath = "";
   resultsRootNode.value = createRootNode(appConfig.filesystemRoot, "Data Root");
@@ -2024,6 +2401,7 @@ async function loadSavedRunResults(inputPath, runFolder = "") {
 
 function applyRunItems(items) {
   const resultMap = new Map((items || []).map((item) => [item.imagePath, item]));
+  const hasVisualizationUpdates = (items || []).some((item) => item.predCachePath || item.gtCachePath || item.predSavedPath || item.gtSavedPath);
   responseQueue.value = responseQueue.value.map((queueItem) => {
     const result = resultMap.get(queueItem.imagePath);
     if (!result) {
@@ -2036,6 +2414,9 @@ function applyRunItems(items) {
       sending: false,
     };
   });
+  if (hasVisualizationUpdates) {
+    bumpVisualizationRefresh();
+  }
 }
 
 async function requestPipelineRun(inputPath) {
@@ -2375,11 +2756,24 @@ function parentDirectoryPath(path) {
 }
 
 function imageContentUrl(path) {
-  return `/api/images/content?${new URLSearchParams({ path }).toString()}`;
+  const params = new URLSearchParams({ path });
+  if (visualizationRefreshNonce.value) {
+    params.set("v", String(visualizationRefreshNonce.value));
+  }
+  return `/api/images/content?${params.toString()}`;
+}
+
+function bumpVisualizationRefresh() {
+  visualizationRefreshNonce.value += 1;
 }
 
 function stringify(value) {
   return JSON.stringify(value ?? null, null, 2);
+}
+
+function formatMetric(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(4) : "-";
 }
 
 async function responseToError(response, fallback) {

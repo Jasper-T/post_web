@@ -22,12 +22,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt /tmp/requirements.txt
-COPY dsetkit-0.3.1-py3-none-any.whl /tmp/dsetkit-0.3.1-py3-none-any.whl
+COPY dsetkit-0.4.0-py3-none-any.whl /tmp/dsetkit-0.4.0-py3-none-any.whl
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install -r /tmp/requirements.txt \
-    && python -m pip install /tmp/dsetkit-0.3.1-py3-none-any.whl \
-    && rm -f /tmp/requirements.txt /tmp/dsetkit-0.3.1-py3-none-any.whl
+    && python -m pip install /tmp/dsetkit-0.4.0-py3-none-any.whl \
+    && rm -f /tmp/requirements.txt /tmp/dsetkit-0.4.0-py3-none-any.whl
 
 COPY backend/ /workspace/project/backend/
 

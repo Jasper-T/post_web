@@ -3,7 +3,6 @@
     <div class="template-editor-toolbar">
       <span class="template-editor-title">请求配置</span>
       <div class="json-template-actions">
-        <button class="small-button" type="button" @click="$emit('read')">Read</button>
         <button class="small-button primary-button" type="button" @click="$emit('save')">Save</button>
       </div>
     </div>

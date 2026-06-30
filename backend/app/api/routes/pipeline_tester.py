@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from backend.app.schemas.pipeline_tester import (
     PipelineAssetResponse,
@@ -16,9 +16,10 @@ from backend.app.schemas.pipeline_tester import (
 )
 from backend.app.schemas.visualization import (
     GenerateGTRequest,
-    SaveVisualizationRequest,
+    GeneratePredRequest,
     VisualizationResponse,
 )
+from fastapi.responses import FileResponse
 from backend.app.services.pipeline_tester import (
     add_pipeline_group,
     delete_pipeline,
@@ -32,9 +33,10 @@ from backend.app.services.pipeline_tester import (
     run_pipeline,
     save_pipeline_asset,
     save_pipeline,
+    render_pipeline_pred_visualization,
     update_pipeline_group_name,
 )
-from backend.app.services.visualization import generate_gt_cache, save_visualizations
+from backend.app.services.visualization import generate_gt_cache, resolve_visualization_cache_path
 
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
@@ -109,16 +111,27 @@ def execute_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineRespo
     return run_pipeline(name, request)
 
 
+@router.post("/{name}/visualizations/pred", response_model=VisualizationResponse)
+def create_pred_visualization(name: str, request: GeneratePredRequest) -> VisualizationResponse:
+    get_pipeline_editor(name)
+    try:
+        cache_path = render_pipeline_pred_visualization(name, request.imagePath, request.parsed)
+        item = {"imagePath": request.imagePath, "cachePath": cache_path}
+    except Exception as exc:
+        item = {"imagePath": request.imagePath, "error": str(exc)}
+    return VisualizationResponse(items=[item])
+
+
 @router.post("/{name}/visualizations/gt", response_model=VisualizationResponse)
 def create_gt_visualizations(name: str, request: GenerateGTRequest) -> VisualizationResponse:
     get_pipeline_editor(name)
-    return VisualizationResponse(items=generate_gt_cache(request.imagePaths, request.labelDir, request.format, request.names))
+    return VisualizationResponse(items=generate_gt_cache(name, request.imagePaths, request.labelDir, request.format, request.names))
 
 
-@router.post("/{name}/visualizations/save", response_model=VisualizationResponse)
-def save_pipeline_visualizations(name: str, request: SaveVisualizationRequest) -> VisualizationResponse:
+@router.get("/{name}/visualizations/content")
+def read_visualization_content(name: str, path: str = Query(..., description="Absolute visualization cache path")) -> FileResponse:
     get_pipeline_editor(name)
-    return VisualizationResponse(items=save_visualizations(name, request.kind, request.imagePaths, request.labelDir))
+    return FileResponse(resolve_visualization_cache_path(name, path))
 
 
 @router.post("/{name}/group", response_model=PipelineListResponse)

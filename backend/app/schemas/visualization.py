@@ -1,6 +1,11 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+class GeneratePredRequest(BaseModel):
+    imagePath: str = Field(..., min_length=1)
+    parsed: Any = Field(default_factory=list)
 
 
 class VisualizationItem(BaseModel):
@@ -20,9 +25,3 @@ class GenerateGTRequest(BaseModel):
     labelDir: str
     format: Literal["yolo", "labelme", "voc"]
     names: list[str] = Field(default_factory=list)
-
-
-class SaveVisualizationRequest(BaseModel):
-    kind: Literal["pred", "gt"]
-    imagePaths: list[str] = Field(default_factory=list)
-    labelDir: str | None = None
