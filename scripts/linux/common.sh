@@ -18,7 +18,7 @@ set_release_project_name() {
     echo "ProjectName cannot be empty." >&2
     exit 1
   fi
-  if [[ "$name" == *"/"* || "$name" == *":"* || "$name" == *$'\0'* ]]; then
+  if [[ "$name" == *"/"* || "$name" == *":"* ]]; then
     echo "ProjectName contains invalid file name characters: $name" >&2
     exit 1
   fi
