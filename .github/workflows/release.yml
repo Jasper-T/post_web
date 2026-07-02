@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-windows:
     name: Build Windows package
@@ -138,19 +142,33 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Publish release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            artifacts/web-post-windows/web-post-windows.zip \
-            artifacts/web-post-linux/web-post-linux.zip \
-            artifacts/web-post-macos/web-post-macos.zip \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "Cross-platform release for ${GITHUB_REF_NAME}" \
-            --latest
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} exists. Overwriting assets..."
+            gh release upload "${GITHUB_REF_NAME}" \
+              artifacts/web-post-windows/web-post-windows.zip \
+              artifacts/web-post-linux/web-post-linux.zip \
+              artifacts/web-post-macos/web-post-macos.zip \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          else
+            echo "Release ${GITHUB_REF_NAME} does not exist. Creating release..."
+            gh release create "${GITHUB_REF_NAME}" \
+              artifacts/web-post-windows/web-post-windows.zip \
+              artifacts/web-post-linux/web-post-linux.zip \
+              artifacts/web-post-macos/web-post-macos.zip \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${GITHUB_REF_NAME}" \
+              --notes "Cross-platform release for ${GITHUB_REF_NAME}" \
+              --latest
+          fi
