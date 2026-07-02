@@ -30,7 +30,7 @@ COPY backend/wheels/ /workspace/backend/wheels/
 
 RUN python -m pip install --upgrade pip uv \
     && uv sync --no-dev --frozen --project /workspace \
-    && rm -f /workspace/backend/wheels/dsetkit-0.4.0-py3-none-any.whl
+    && rm -f /workspace/backend/wheels/dsetkit-0.4.1-py3-none-any.whl
 
 COPY backend/ /workspace/backend/
 

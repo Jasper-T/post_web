@@ -389,6 +389,7 @@
                           <div class="evaluation-metric"><span>Recall</span><strong>{{ formatMetric(evaluationResult.metrics.recall) }}</strong></div>
                           <div class="evaluation-metric"><span>F1</span><strong>{{ formatMetric(evaluationResult.metrics.f1) }}</strong></div>
                           <div class="evaluation-metric"><span>{{ evaluationApKey }}</span><strong>{{ formatMetric(evaluationResult.metrics[evaluationApKey] ?? evaluationResult.metrics.mAP) }}</strong></div>
+                          <div class="evaluation-metric"><span>{{ evaluationApRangeKey }}</span><strong>{{ formatMetric(evaluationResult.metrics[evaluationApRangeKey]) }}</strong></div>
                         </div>
 
                         <div class="evaluation-table-shell ui-table">
@@ -401,6 +402,7 @@
                                 <th>Precision</th>
                                 <th>Recall</th>
                                 <th>{{ evaluationApKey }}</th>
+                                <th>{{ evaluationApRangeKey }}</th>
                                 <th>F1</th>
                                 <th>TP</th>
                                 <th>FP</th>
@@ -415,6 +417,7 @@
                                 <td>{{ formatMetric(row.precision) }}</td>
                                 <td>{{ formatMetric(row.recall) }}</td>
                                 <td>{{ formatMetric(row[evaluationApKey] ?? row.ap) }}</td>
+                                <td>{{ formatMetric(row[evaluationApRangeKey] ?? row.ap_range) }}</td>
                                 <td>{{ formatMetric(row.f1) }}</td>
                                 <td>{{ row.tp ?? 0 }}</td>
                                 <td>{{ row.fp ?? 0 }}</td>
@@ -518,20 +521,30 @@
                   <option value="new">New</option>
                   <option value="success">Success</option>
                   <option value="failed">Failed</option>
+                  <option value="abort">Abort</option>
                 </select>
                 <button
                   class="response-send-all ui-btn ui-btn-primary"
+                  :class="{ 'is-running': runningAll }"
                   type="button"
-                  :disabled="runningAll || !editor.name || !editor.inputPath || !selectedResponseCount"
-                  @click="runAllImages"
+                  :title="runningAll ? 'Abort sending' : `Send all selected (${selectedResponseCount})`"
+                  :aria-label="runningAll ? 'Abort sending' : `Send all selected (${selectedResponseCount})`"
+                  :disabled="!runningAll && (!editor.name || !editor.inputPath || !selectedResponseCount)"
+                  @click="runningAll ? abortAllImages() : runAllImages()"
                 >
-                  {{ runningAll ? "Sending..." : `Send All (${selectedResponseCount})` }}
+                  <svg v-if="runningAll" class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 7h10v10H7V7Z" />
+                  </svg>
+                  <svg v-else class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 5v14l11-7L8 5Z" />
+                  </svg>
+                  <span>{{ runningAll ? "Abort" : `Send All (${selectedResponseCount})` }}</span>
                 </button>
               </div>
 
               <div class="response-queue-summary">
                 <span>{{ filteredResponseQueue.length }} / {{ responseQueue.length }} images</span>
-                <span>new {{ responseStatusCounts.new }} / success {{ responseStatusCounts.success }} / failed {{ responseStatusCounts.failed }}</span>
+                <span>new {{ responseStatusCounts.new }} / success {{ responseStatusCounts.success }} / failed {{ responseStatusCounts.failed }} / abort {{ responseStatusCounts.abort }}</span>
               </div>
 
               <div v-if="queueLoading" class="empty-state compact-empty-state">Loading images...</div>
@@ -855,6 +868,8 @@ const responseStatusFilter = ref("all");
 const responseQueue = ref([]);
 const queueLoading = ref(false);
 const runningAll = ref(false);
+const abortAllRequested = ref(false);
+const activeBatchController = ref(null);
 const responseLeftPercent = ref(64);
 const activePath = ref("");
 const uploadSelectionPath = ref("");
@@ -1017,9 +1032,22 @@ const evaluationClassRows = computed(() => {
   const perClass = evaluationResult.value?.metrics?.per_class || {};
   return Object.entries(perClass).map(([name, metrics]) => ({ name, ...metrics }));
 });
+function isEvaluationApKey(key) {
+  return key.startsWith("mAP") && !key.includes("-") && key !== "mAP";
+}
+
+function isEvaluationApRangeKey(key) {
+  return key.startsWith("mAP") && key.includes("-");
+}
+
 const evaluationApKey = computed(() => {
   const metrics = evaluationResult.value?.metrics || {};
-  return Object.keys(metrics).find((key) => key.startsWith("mAP") && key !== "mAP") || "mAP";
+  return Object.keys(metrics).find(isEvaluationApKey) || "mAP";
+});
+
+const evaluationApRangeKey = computed(() => {
+  const metrics = evaluationResult.value?.metrics || {};
+  return Object.keys(metrics).find(isEvaluationApRangeKey) || `${evaluationApKey.value}-95`;
 });
 
 const filteredSelectedCount = computed(() =>
@@ -1044,7 +1072,7 @@ const responseStatusCounts = computed(() =>
       counts[item.status] += 1;
       return counts;
     },
-    { new: 0, success: 0, failed: 0 },
+    { new: 0, success: 0, failed: 0, abort: 0 },
   ),
 );
 
@@ -2578,16 +2606,29 @@ function responsePathKeys(path) {
   return Array.from(new Set(keys));
 }
 
-async function requestPipelineRun(inputPath) {
+async function requestPipelineRun(inputPath, signal) {
   const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ inputPath, saveResults: true }),
+    signal,
   });
   if (!response.ok) {
     throw await responseToError(response, "Failed to run pipeline");
   }
   return response.json();
+}
+
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
+function abortAllImages() {
+  if (!runningAll.value) {
+    return;
+  }
+  abortAllRequested.value = true;
+  activeBatchController.value?.abort();
 }
 
 async function runAllImages() {
@@ -2601,19 +2642,30 @@ async function runAllImages() {
     runError.value = "Select at least one image before sending.";
     return;
   }
-  const selectedPaths = new Set(selectedItems.map((item) => item.imagePath));
   runningAll.value = true;
-  responseQueue.value = responseQueue.value.map((item) =>
-    selectedPaths.has(item.imagePath) ? { ...item, sending: true } : item,
-  );
+  abortAllRequested.value = false;
   const allItems = [];
   try {
     for (const item of selectedItems) {
+      selectedImagePath.value = item.imagePath;
+      responseQueue.value = responseQueue.value.map((queueItem) =>
+        queueItem.imagePath === item.imagePath ? { ...queueItem, sending: true } : queueItem,
+      );
+      const controller = new AbortController();
+      activeBatchController.value = controller;
       try {
-        const data = await requestPipelineRun(item.imagePath);
+        const data = await requestPipelineRun(item.imagePath, controller.signal);
         allItems.push(...(data.items || []));
         applyRunItems(data.items);
       } catch (error) {
+        if (isAbortError(error) && abortAllRequested.value) {
+          responseQueue.value = responseQueue.value.map((queueItem) =>
+            queueItem.imagePath === item.imagePath
+              ? { ...queueItem, status: "abort", sending: false, error: "Aborted" }
+              : queueItem,
+          );
+          break;
+        }
         const failedItem = {
           imagePath: item.imagePath,
           ok: false,
@@ -2622,11 +2674,23 @@ async function runAllImages() {
         };
         allItems.push(failedItem);
         applyRunItems([failedItem]);
+      } finally {
+        responseQueue.value = responseQueue.value.map((queueItem) =>
+          queueItem.imagePath === item.imagePath ? { ...queueItem, sending: false } : queueItem,
+        );
+        if (activeBatchController.value === controller) {
+          activeBatchController.value = null;
+        }
+      }
+      if (abortAllRequested.value) {
+        break;
       }
     }
     runResult.value = { items: allItems };
     selectedImagePath.value ||= selectedItems[0]?.imagePath || "";
   } finally {
+    activeBatchController.value = null;
+    abortAllRequested.value = false;
     responseQueue.value = responseQueue.value.map((item) => ({ ...item, sending: false }));
     runningAll.value = false;
   }
@@ -2958,3 +3022,35 @@ onMounted(async () => {
 });
 
 </script>
+
+<style>
+.response-send-all .button-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
+.response-send-all.is-running {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.22);
+}
+
+.response-send-all.is-running:hover:not(:disabled) {
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.response-list-item.abort {
+  border-color: #facc15;
+  background: #fffbeb;
+}
+
+.response-list-item.abort .response-status-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+</style>

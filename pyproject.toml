@@ -10,7 +10,7 @@ dependencies = [
   "natsort>=8,<9",
   "opencv-python>=4.8,<5",
   "requests>=2.32,<3",
-  "dsetkit==0.4.0",
+  "dsetkit==0.4.1",
 ]
 
 [dependency-groups]
@@ -22,5 +22,5 @@ release = [
 package = false
 
 [tool.uv.sources]
-dsetkit = { path = "backend/wheels/dsetkit-0.4.0-py3-none-any.whl" }
+dsetkit = { path = "backend/wheels/dsetkit-0.4.1-py3-none-any.whl" }
 

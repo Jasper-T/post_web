@@ -6,7 +6,7 @@ $Script:ProjectName = "web-post"
 $Script:PackageDir = Join-Path $Script:ReleaseRoot $Script:ProjectName
 $Script:AssetsStageDir = Join-Path $Script:ReleaseRoot "_assets_stage"
 $Script:FrontendDist = Join-Path $Script:Root "frontend\dist"
-$Script:Wheel = Join-Path $Script:Root "backend/wheels/dsetkit-0.4.0-py3-none-any.whl"
+$Script:Wheel = Join-Path $Script:Root "backend/wheels/dsetkit-0.4.1-py3-none-any.whl"
 $Script:DemoPipelineDir = Join-Path $Script:Root "data\templates\Ungrouped\demo_image_pipeline"
 
 function Set-ReleaseProjectName([string]$ProjectName = "web-post") {

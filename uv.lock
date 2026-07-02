@@ -115,8 +115,8 @@ wheels = [
 
 [[package]]
 name = "dsetkit"
-version = "0.4.0"
-source = { path = "backend/wheels/dsetkit-0.4.0-py3-none-any.whl" }
+version = "0.4.1"
+source = { path = "backend/wheels/dsetkit-0.4.1-py3-none-any.whl" }
 dependencies = [
     { name = "natsort" },
     { name = "numpy" },
@@ -124,7 +124,7 @@ dependencies = [
     { name = "tqdm" },
 ]
 wheels = [
-    { filename = "dsetkit-0.4.0-py3-none-any.whl", hash = "sha256:a9c7ce3f14115c4335622b1b7f232743c4fc1f5b7efdab2ac350c2c3bb2c0b53" },
+    { filename = "dsetkit-0.4.1-py3-none-any.whl", hash = "sha256:34862264cc4dbc542da8389a368e205b6a49f84fb9b600d7f49bba4e052cf386" },
 ]
 
 [package.metadata]
@@ -150,39 +150,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/8a/c9/5e8defe249899c0dc
 wheels = [
     { url = "https://files.pythonhosted.org/packages/38/a9/69a6924f645eb4dd8cd625bf255b3625990eb3e14e073438a53c405dcd3e/fastapi-0.138.1-py3-none-any.whl", hash = "sha256:b994cae7ba8b82c976a728b544244de31333fa5f7d261f9a1dffe526444cae23", size = 129182, upload-time = "2026-06-25T15:40:40.771Z" },
 ]
-
-[[package]]
-name = "web-post"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "dsetkit" },
-    { name = "fastapi" },
-    { name = "loguru" },
-    { name = "natsort" },
-    { name = "opencv-python" },
-    { name = "requests" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-release = [
-    { name = "pyinstaller" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "dsetkit", path = "backend/wheels/dsetkit-0.4.0-py3-none-any.whl" },
-    { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "loguru", specifier = ">=0.7,<1" },
-    { name = "natsort", specifier = ">=8,<9" },
-    { name = "opencv-python", specifier = ">=4.8,<5" },
-    { name = "requests", specifier = ">=2.32,<3" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30,<1" },
-]
-
-[package.metadata.requires-dev]
-release = [{ name = "pyinstaller", specifier = ">=6,<7" }]
 
 [[package]]
 name = "h11"
@@ -644,6 +611,39 @@ wheels = [
 ]
 
 [[package]]
+name = "web-post"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "dsetkit" },
+    { name = "fastapi" },
+    { name = "loguru" },
+    { name = "natsort" },
+    { name = "opencv-python" },
+    { name = "requests" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+release = [
+    { name = "pyinstaller" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dsetkit", path = "backend/wheels/dsetkit-0.4.1-py3-none-any.whl" },
+    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "loguru", specifier = ">=0.7,<1" },
+    { name = "natsort", specifier = ">=8,<9" },
+    { name = "opencv-python", specifier = ">=4.8,<5" },
+    { name = "requests", specifier = ">=2.32,<3" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30,<1" },
+]
+
+[package.metadata.requires-dev]
+release = [{ name = "pyinstaller", specifier = ">=6,<7" }]
+
+[[package]]
 name = "websockets"
 version = "16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -678,4 +678,3 @@ sdist = { url = "https://files.pythonhosted.org/packages/b3/8f/705086c9d734d3b66
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/07/c6fe3ad3e685340704d314d765b7912993bcb8dc198f0e7a89382d37974b/win32_setctime-1.2.0-py3-none-any.whl", hash = "sha256:95d644c4e708aba81dc3704a116d8cbc974d70b3bdb8be1d150e36be6e9d1390", size = 4083, upload-time = "2024-12-07T15:28:26.465Z" },
 ]
-

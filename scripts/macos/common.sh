@@ -8,7 +8,7 @@ PROJECT_NAME="web-post"
 PACKAGE_DIR="$RELEASE_ROOT/$PROJECT_NAME"
 ASSETS_STAGE_DIR="$RELEASE_ROOT/_assets_stage"
 FRONTEND_DIST="$ROOT/frontend/dist"
-WHEEL="$ROOT/backend/wheels/dsetkit-0.4.0-py3-none-any.whl"
+WHEEL="$ROOT/backend/wheels/dsetkit-0.4.1-py3-none-any.whl"
 DEMO_PIPELINE_DIR="$ROOT/data/templates/Ungrouped/demo_image_pipeline"
 
 set_release_project_name() {

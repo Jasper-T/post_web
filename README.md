@@ -1,6 +1,6 @@
 ﻿# web-post
 
-web-post is a FastAPI + Vue 3 application for browsing image datasets, testing HTTP vision pipelines, inspecting raw and parsed responses, previewing annotations, converting annotations with dsetkit 0.4.0, and evaluating prediction results against ground truth.
+web-post is a FastAPI + Vue 3 application for browsing image datasets, testing HTTP vision pipelines, inspecting raw and parsed responses, previewing annotations, converting annotations with dsetkit 0.4.1, and evaluating prediction results against ground truth.
 
 The project can run as a Docker Compose stack, as a local development app, or as a Windows portable package where the backend executable serves both the API and the built frontend.
 
@@ -14,7 +14,7 @@ The project can run as a Docker Compose stack, as a local development app, or as
 - Inspect raw response JSON and parsed detection JSON.
 - Preview prediction and GT annotations on images.
 - Download generated Pred or GT annotated images to a local folder.
-- Convert Pred or GT annotations to LabelMe, VOC, or YOLO with dsetkit 0.4.0.
+- Convert Pred or GT annotations to LabelMe, VOC, or YOLO with dsetkit 0.4.1.
 - Evaluate predictions against GT with `dsetkit.dataset` and `dsetkit.evaluator`.
 
 ## Project Layout
@@ -22,7 +22,7 @@ The project can run as a Docker Compose stack, as a local development app, or as
 ```text
 web-post/
   backend/                         FastAPI backend, pipeline core, launcher, tools
-  backend/wheels/                  Local wheel dependencies, including dsetkit 0.4.0
+  backend/wheels/                  Local wheel dependencies, including dsetkit 0.4.1
   frontend/                        Vue 3 frontend
   frontend/src/styles/             Shared frontend style system
   data/templates/<group>/<pipeline>/ Pipeline definitions and JSON assets
@@ -115,10 +115,10 @@ Release packaging dependencies such as PyInstaller are in the `release` dependen
 uv sync --group release
 ```
 
-`dsetkit==0.4.0` is installed from the local wheel:
+`dsetkit==0.4.1` is installed from the local wheel:
 
 ```text
-backend/wheels/dsetkit-0.4.0-py3-none-any.whl
+backend/wheels/dsetkit-0.4.1-py3-none-any.whl
 ```
 
 ## Docker Compose
