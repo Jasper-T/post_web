@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows package
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install uv
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install uv
+
+      - name: Build Windows release
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\windows\release.ps1 -ProjectName web-post -OneDir
+
+      - name: Archive Windows package
+        shell: powershell
+        run: |
+          Compress-Archive -Path release\windows\web-post -DestinationPath release\windows\web-post-windows.zip -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-post-windows
+          path: release/windows/web-post-windows.zip
+
+  build-linux:
+    name: Build Linux package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install uv
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install uv
+
+      - name: Build Linux release
+        shell: bash
+        run: |
+          chmod +x scripts/linux/*.sh
+          ./scripts/linux/release.sh --project-name web-post --onedir
+
+      - name: Archive Linux package
+        run: |
+          cd release/linux
+          zip -r web-post-linux.zip web-post
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-post-linux
+          path: release/linux/web-post-linux.zip
+
+  build-macos:
+    name: Build macOS package
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install uv
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install uv
+
+      - name: Build macOS release
+        shell: bash
+        run: |
+          chmod +x scripts/macos/*.sh
+          ./scripts/macos/release.sh --project-name web-post --onedir
+
+      - name: Archive macOS package
+        run: |
+          cd release/macos
+          zip -r web-post-macos.zip web-post
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-post-macos
+          path: release/macos/web-post-macos.zip
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows
+      - build-linux
+      - build-macos
+
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            artifacts/web-post-windows/web-post-windows.zip \
+            artifacts/web-post-linux/web-post-linux.zip \
+            artifacts/web-post-macos/web-post-macos.zip \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Cross-platform release for ${GITHUB_REF_NAME}" \
+            --latest
