@@ -64,22 +64,22 @@ def list_algorithms():
 
 
 def main():
-    list_algorithms()          # 目前支持的算法名称
+    list_algorithms()
 
-    algorithm_name = "f_ebike_licecse" # 算法名称，x开头为星河平台，f开头为扶摇平台
+    algorithm_name = "f_ebike_licecse"
     
-    input_path = "/workspace/projects/00_datasets/license/13.jpg"  # 支持单图路径或目录路径
+    input_path = "/workspace/projects/00_datasets/license/13.jpg"
 
-    det_dir  = "results/dets"  # 保存检测结果目录
+    det_dir  = "results/dets"
     
-    names = ['motorbike']        # 检测类别名称列表
-    plot_dir = "results/plot"  # 保存标注图片目录
-    target_format = "labelme"  # 标签格式，必须为 'yolo', 'voc', 'labelme' 之一
-    dump_dir = "results/dump"  # 保存标注标签目录
+    names = ['motorbike']
+    plot_dir = "results/plot"
+    target_format = "labelme"
+    dump_dir = "results/dump"
     
-    # plot_dir 为 None 时，不触发 plot 的功能
-    # dump_dir 为 None 时，不触发 dump 的功能
-    # target_format 为 None 时，不触发 dump 的功能
+
+
+
 
     run(
         algorithm_name = algorithm_name, 

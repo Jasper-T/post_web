@@ -10,7 +10,7 @@ router = APIRouter(prefix="/mock", tags=["mock"])
 
 @router.post("/detection")
 def detect_image(payload: dict[str, Any]) -> dict[str, Any]:
-    image_value = payload.get("image_base64") or payload.get("image") or payload.get("image_url")
+    image_value = payload.get("image_base64") or payload.get("image_b64") or payload.get("image") or payload.get("image_url")
     has_image = bool(image_value)
     return {
         "code": 0,

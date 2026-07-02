@@ -111,22 +111,22 @@ def run(path, names, det_dir, output_dir="results", target_format="labelme"):
 
 if __name__ == "__main__":
     #--------------------------------------------------------------------------------
-    # 标签自动保存路径示意: 
-    #     输入不管是图片或者文件夹:   /path/to/images/image.jpg 或 /path/to/images
-    #     标签都会保存到: /path/to/labelme 或 /path/to/labels 或 /path/to/xmls
+
+
+
    
-    # 标签的输出格式, 支持: 'yolo'(txt), 'voc'(xml), 'labelme'(json)
+
     # --------------------------------------------------------------------------------
     from dsetkit.annotations.io import FORMAT_DIRS
     target_format = "labelme"  
 
-    img_path = "/workspace/projects/00_datasets/smk/images"  # 图片路径, 支持: 单个图片路径, 或 图片目录路径
+    img_path = "/workspace/projects/00_datasets/smk/images"
     
-    det_dir = "results/dets/x_smoke"  # 检测结果目录
+    det_dir = "results/dets/x_smoke"
     
-    out_dir = f"results/x_smoke/"  # 转换的标注标签输出路径
+    out_dir = f"results/x_smoke/"
     
-    names = ["smoking"]  # 检测类别名称列表
+    names = ["smoking"]
 
     run(
         path = img_path, 

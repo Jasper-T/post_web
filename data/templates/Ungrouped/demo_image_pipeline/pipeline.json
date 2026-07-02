@@ -2,15 +2,10 @@
   "name": "demo_image_pipeline",
   "display_name": "Demo Image Pipeline",
   "group_name": "Ungrouped",
-  "url": "${FUXING_BASE_URL}/api/mock/detection",
+  "url": "${WEB_POST_BASE_URL}/api/mock/detection",
   "transport": "http",
   "method": "POST",
   "image_directory": null,
-  "header_json": "templates/Ungrouped/demo_image_pipeline/header.json",
-  "body_json": "templates/Ungrouped/demo_image_pipeline/body.json",
-  "response_template_json": "templates/Ungrouped/demo_image_pipeline/response.json",
-  "response_map_json": "templates/Ungrouped/demo_image_pipeline/mapping.json",
-  "post_config_json": "templates/Ungrouped/demo_image_pipeline/post_config.json",
   "default_inputs": {},
   "connect_timeout": 3,
   "read_timeout": 30,
@@ -18,3 +13,4 @@
     "rule_json": "templates/Ungrouped/demo_image_pipeline/rule.json"
   }
 }
+

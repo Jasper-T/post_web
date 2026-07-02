@@ -1,14 +1,14 @@
 <template>
   <div class="post-config-editor">
-    <div class="template-editor-toolbar">
-      <span class="template-editor-title">请求配置</span>
-      <div class="json-template-actions">
-        <button class="small-button primary-button" type="button" @click="$emit('save')">Save</button>
+    <div class="template-editor-toolbar ui-toolbar">
+      <span class="template-editor-title">Request Config</span>
+      <div class="json-template-actions ui-toolbar">
+        <button class="ui-btn ui-btn-primary" type="button" @click="$emit('save')">Save</button>
       </div>
     </div>
 
     <div class="tab-grid">
-      <label class="tool-field">
+      <label class="tool-field ui-field">
         <span>Connect Timeout (s)</span>
         <input
           :value="modelValue.connectTimeout"
@@ -18,7 +18,7 @@
           @input="updateField('connectTimeout', Number($event.target.value || 0))"
         />
       </label>
-      <label class="tool-field">
+      <label class="tool-field ui-field">
         <span>Read Timeout (s)</span>
         <input
           :value="modelValue.readTimeout"
@@ -30,13 +30,13 @@
       </label>
     </div>
 
-    <div class="mapping-table post-config-table">
+    <div class="mapping-table post-config-table ui-table">
       <div class="mapping-head mapping-head-compact">
         <span>Placeholder</span>
         <span>Type</span>
         <span>Inject Path</span>
       </div>
-      <div v-for="item in placeholders" :key="item.key" class="mapping-row mapping-row-compact">
+      <div v-for="item in placeholders" :key="item.key" class="mapping-row mapping-row-compact ui-table-row">
         <input class="kv-cell-input" :value="item.key" disabled />
         <select class="kv-cell-input" :value="item.type" @change="updatePlaceholderType(item.key, $event.target.value)">
           <option value="string">string</option>

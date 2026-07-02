@@ -1,158 +1,163 @@
-﻿# Fuxing 2
+﻿# web-post
 
-Fuxing 2 is a FastAPI + Vue 3 application for image dataset browsing, HTTP vision-pipeline testing, response parsing, visualization, dsetkit-powered annotation conversion, and result evaluation. It can run as a Docker stack for development or as a portable desktop-style package where the backend executable serves both API and frontend files.
+web-post is a FastAPI + Vue 3 application for browsing image datasets, testing HTTP vision pipelines, inspecting raw and parsed responses, previewing annotations, converting annotations with dsetkit 0.4.0, and evaluating prediction results against ground truth.
 
-## What It Does
+The project can run as a Docker Compose stack, as a local development app, or as a Windows portable package where the backend executable serves both the API and the built frontend.
 
-- Browse image files from a configurable backend-visible filesystem root.
-- Upload files or folders from the frontend user's machine into the backend machine's datasets folder.
-- Create, group, clone, test, and delete HTTP image pipelines.
-- Send images to a pipeline, inspect raw JSON responses, parse detections, and preview rendered boxes.
-- Save prediction visualizations and compare with GT labels.
-- Run dsetkit tools for dataset conversion, plotting, and evaluation.
-- Use a built-in demo image pipeline for first-run testing.
+## Features
+
+- Browse images from a backend-visible filesystem root controlled by `WEB_POST_FILESYSTEM_ROOT`.
+- Upload files or folders from the browser machine into the backend datasets directory.
+- Create, clone, move, delete, and group HTTP image pipelines.
+- Configure request Header JSON, Body JSON, Response sample JSON, response parsing, and request settings.
+- Send one image or a selected batch of images to a pipeline.
+- Inspect raw response JSON and parsed detection JSON.
+- Preview prediction and GT annotations on images.
+- Download generated Pred or GT annotated images to a local folder.
+- Convert Pred or GT annotations to LabelMe, VOC, or YOLO with dsetkit 0.4.0.
+- Evaluate predictions against GT with `dsetkit.dataset` and `dsetkit.evaluator`.
 
 ## Project Layout
 
 ```text
-fuxing_2/
-  backend/                 FastAPI backend, pipeline registry, launcher, and tools
-  frontend/                Vue 3 frontend and production build
-  data/                    Runtime pipeline templates, groups, logs, and results
-  datasets/                Local dataset root for development; portable builds create this folder
-  scripts/                 Build and maintenance scripts
-  release/                 Generated portable packages
-  dsetkit-0.4.0-py3-none-any.whl
+web-post/
+  backend/                         FastAPI backend, pipeline core, launcher, tools
+  backend/wheels/                  Local wheel dependencies, including dsetkit 0.4.0
+  frontend/                        Vue 3 frontend
+  frontend/src/styles/             Shared frontend style system
+  data/templates/<group>/<pipeline>/ Pipeline definitions and JSON assets
+  data/.cache/<pipeline>/<bucket>/ Runtime run results, previews, and conversions
+  scripts/windows/                 Staged Windows release scripts
+  scripts/macos/                   macOS packaging script; currently not in the main release path
+  release/                         Generated release packages
   docker-compose.yml
+  pyproject.toml
+  uv.lock
 ```
 
-A portable Windows package has this shape:
+Pipeline groups are discovered from folders under `data/templates`. `Ungrouped` and `Deleted` are required special groups and are created automatically when missing. A pipeline folder is named by `pipeline_name`; the user-facing `displayName` is stored inside `pipeline.json`. Both names must be globally unique.
+
+## Template Privacy And Sharing
+
+The open-source repository and portable release intentionally include only `data/templates/Ungrouped/demo_image_pipeline`. Real templates often contain private service URLs, headers, request bodies, response samples, class names, or customer-specific parsing rules, so treat them as local/private runtime data.
+
+To reuse templates from another user or machine:
+
+1. Copy the template folder into `data/templates/<group>/<pipeline_name>/`. For a portable package, copy it into `release/windows/web-post/data/templates/<group>/<pipeline_name>/`.
+2. Keep the JSON files together, especially `pipeline.json`, `header.json`, `body.json`, `response.json`, `mapping.json`, and `post_config.json`.
+3. Make sure `pipeline_name` and `displayName` are unique. If there is a conflict, rename the folder and update `pipeline.json` before starting the app.
+4. Review copied files for private URLs, tokens, cookies, internal headers, sample payloads, and response data before sharing them.
+5. Refresh the page after copying. If the template does not appear, restart the backend so it reloads `data/templates`.
+
+Private template folders are ignored by git by default; only the demo pipeline is meant to be tracked.
+
+## Runtime Data
+
+Runtime data is stored under `data/` by default:
 
 ```text
-fuxing/
-  fuxing.exe
-  start.bat
-  fuxing.env
-  html/
-  data/
-  datasets/
+data/
+  templates/
+    Ungrouped/demo_image_pipeline/
+      pipeline.json
+      header.json
+      body.json
+      response.json
+      mapping.json
+      post_config.json
+  .cache/
+    <pipeline>/<bucket>/
+      post/
+        _summary.json
+        *.raw.json
+        *.parsed.json
+      pred/
+      GT/
+      labelme|voc|yolo/
+  logs/
 ```
 
-Keep these files and folders together. The executable reads runtime data and frontend files from sibling folders.
-
-## Runtime Directories
-
-- `html/`: built frontend files served by the backend launcher.
-- `data/`: pipeline groups, pipeline JSON templates, logs, and run results.
-- `datasets/`: fixed upload destination on the backend machine.
-
-The file browser dialog and upload feature intentionally use different scopes:
-
-- File browser root: controlled by `FUXING_FILESYSTEM_ROOT`; Linux/macOS default is `/`, Windows portable default is the drive that contains `fuxing.exe`.
-- Upload source: selected freely by the browser from the frontend user's machine.
-- Upload target: always `FUXING_DATASETS_ROOT`, which defaults to `fuxing/datasets` in portable builds.
-
-This supports a common deployment shape where the frontend is opened on machine A and the backend runs on machine B. Upload transfers files from A into B's datasets folder.
+Cache bucket names are derived from the image input path. For `/root/1/2/3` or `/root/1/2/3/file.jpg`, the bucket is `2_3`.
 
 ## Configuration
 
-The launcher reads configuration in this order:
-
-1. Command-line options, such as `--filesystem-root D:\datasets`.
-2. `fuxing.env` next to the executable.
-3. Platform defaults.
-
-Useful environment variables:
+In local development, `backend.main:app` reads environment variables directly. The packaged launcher in `backend/launcher.py` also reads `web-post.env` from the app directory and supports command-line arguments such as `--host`, `--port`, `--filesystem-root`, `--no-browser`, and `--reload`.
 
 ```text
-FUXING_FILESYSTEM_ROOT   Root shown by the file browser dialog
-FUXING_DATA_ROOT         Runtime app data directory
-FUXING_DATASETS_ROOT     Backend upload target directory
-FUXING_FRONTEND_DIST     Built frontend directory
-FUXING_BASE_URL          Internal base URL used by the demo pipeline
+WEB_POST_FILESYSTEM_ROOT   Root shown by file-system browsing controls
+WEB_POST_DATA_ROOT         Runtime data directory, defaults to data
+WEB_POST_DATASETS_ROOT     Upload destination on the backend machine
+WEB_POST_FRONTEND_DIST     Built frontend directory served by the backend launcher
+WEB_POST_BASE_URL          Base URL used by built-in demo/mock pipelines
+LOG_LEVEL                  Backend log level, defaults to INFO
+LOG_DIR                    Log directory, defaults to WEB_POST_DATA_ROOT/logs
+LOG_ROTATION               Loguru file rotation, defaults to 10 MB
+LOG_RETENTION              Loguru file retention, defaults to 14 days
 ```
 
-## Windows Portable Build
+The file browser root and upload destination are intentionally separate:
 
-The Windows build script performs the full release flow:
+- Browse buttons show paths visible to the backend under `WEB_POST_FILESYSTEM_ROOT`.
+- Upload selects files from the browser user's machine.
+- Uploaded files are written to `WEB_POST_DATASETS_ROOT` on the backend machine.
 
-1. Installs backend and packaging dependencies.
-2. Builds the Vue frontend into `frontend/dist`.
-3. Builds the backend executable with PyInstaller.
-4. Creates the portable `data/` and `datasets/` folders.
-5. Copies the demo pipeline into the release `data/` folder.
-6. Copies the built frontend into the release `html/` folder.
+## Dependency Management
 
-Build from the project root:
+Python dependencies are managed by uv. The project targets Python `>=3.12,<3.14`.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1
+uv sync
 ```
 
-If you use a uv-created virtual environment, pass its Python executable. The script can install packages with `uv pip install --python <python.exe>` when the environment does not include `pip`:
+Release packaging dependencies such as PyInstaller are in the `release` dependency group:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 -Python .\.venv\Scripts\python.exe
+uv sync --group release
 ```
 
-Build with a custom file-browser root:
+`dsetkit==0.4.0` is installed from the local wheel:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 -FileSystemRoot D:\works\datasets
-```
-
-Useful options:
-
-- `-Python <path>`: choose the Python executable.
-- `-NoFrontendBuild`: reuse existing `frontend/dist`.
-- `-SkipInstall`: skip Python dependency installation.
-- `-OneFile`: build a single-file executable. The default is PyInstaller onedir output, which includes the `_internal/` runtime folder.
-- `-OneDir`: explicit onedir mode. This is also the default.
-
-Do not delete `_internal/` from an onedir package. It contains PyInstaller runtime libraries required by `fuxing.exe`.
-
-## macOS Portable Build
-
-The macOS package must be built on macOS:
-
-```bash
-scripts/macos/build_portable.sh
-```
-
-With a custom file-browser root:
-
-```bash
-scripts/macos/build_portable.sh --filesystem-root /Users/you/datasets
+```text
+backend/wheels/dsetkit-0.4.0-py3-none-any.whl
 ```
 
 ## Docker Compose
 
-Start both backend and frontend containers:
+Start or rebuild the stack:
 
 ```powershell
 docker compose up -d --build
 ```
 
-Default services:
+The Compose stack uses `.env` / `.env.example` for host-side variables such as `WEB_POST_DATA_DIR`, `LOG_LEVEL`, `LOG_ROTATION`, and `LOG_RETENTION`. Backend application variables can also be set in `docker-compose.yml` or a local `docker-compose.override.yml`.
 
-- Backend API: http://localhost:8000
-- Frontend: http://localhost:5173
+Default URLs:
 
-The backend Docker image installs `backend/requirements.txt` and the local `dsetkit-0.4.0-py3-none-any.whl`.
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:8000`
+
+Useful checks:
+
+```powershell
+docker ps
+docker exec webui-backend python -c "import backend.main, dsetkit, cv2, natsort; print('ok')"
+```
 
 ## Local Development
 
 Backend:
 
-```bash
-python -m pip install -r backend/requirements.txt
-python -m pip install dsetkit-0.4.0-py3-none-any.whl
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```powershell
+uv sync
+$env:WEB_POST_DATA_ROOT = ".\data"
+$env:WEB_POST_FILESYSTEM_ROOT = "D:\"
+$env:WEB_POST_DATASETS_ROOT = ".\datasets"
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Frontend:
 
-```bash
+```powershell
 cd frontend
 npm install
 npm run dev
@@ -160,24 +165,57 @@ npm run dev
 
 Production frontend build:
 
-```bash
+```powershell
 cd frontend
 npm run build
 ```
 
-## Demo Pipeline
+To test the backend launcher against the built frontend:
 
-`data/templates/Ungrouped/demo_image_pipeline` is included by default. It points to the backend's built-in mock detection endpoint and accepts an image payload. Use it to confirm that file browsing, request construction, response mapping, and visualization are working before connecting a real algorithm service.
+```powershell
+.\.venv\Scripts\python.exe -m backend.launcher --no-browser --reload
+```
 
-## Frontend Result Tabs
+## Windows Release
 
-After running a pipeline, the response area includes these tabs:
+The main Windows release entry point is:
 
-- Raw response: original JSON returned by the algorithm service.
-- Parsed result: normalized detection records after response mapping.
-- Image preview: rendered prediction or GT boxes on the selected image.
-- Annotation conversion: parsed data prepared for annotation conversion workflows.
-- Result evaluation: dsetkit evaluator output for comparing prediction results with ground truth.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\release.ps1
+```
 
-If a rebuilt portable package still appears to show an older frontend, confirm that the running browser page is opened from the current backend URL, then hard refresh the page with `Ctrl+F5`.
+`release.ps1` always starts by running `uv sync --group release`, then builds with `.venv\Scripts\python.exe` from the synced uv environment.
+
+Common options:
+
+- `-ProjectName <name>`: choose the published folder and executable name. Defaults to `web-post`.
+- `-NoFrontendBuild`: reuse the existing `frontend/dist`.
+- `-OneDir`: build PyInstaller onedir output. This is the default.
+- `-OneFile`: build a single-file executable.
+- `-FileSystemRoot <path>`: write a default `WEB_POST_FILESYSTEM_ROOT` into the portable `web-post.env`.
+
+Portable package shape:
+
+```text
+release/windows/web-post/
+  web-post.exe
+  start.bat
+  web-post.env
+  html/
+  data/
+  datasets/
+```
+
+Keep `web-post.exe`, `html`, `data`, and `datasets` together. In onedir mode, keep PyInstaller's `_internal` runtime folder as well.
+
+## Built-In Demo Pipeline
+
+`data/templates/Ungrouped/demo_image_pipeline` is included for first-run testing. It calls the backend mock detection endpoint and returns one demo box. Use it to verify image browsing, base64 injection, raw response display, parsing, visualization, and cache output before connecting a real algorithm service.
+
+## Troubleshooting
+
+- If Raw and Parsed are empty, first confirm the selected image row has status `success`.
+- If a container page still shows older UI, rebuild and restart the frontend container.
+- If a portable package shows stale UI, hard refresh the browser with `Ctrl+F5` and confirm the browser is opened from the current backend URL.
+- If a copied template does not appear, check the folder shape under `data/templates` and restart the backend.
 

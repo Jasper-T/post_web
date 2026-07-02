@@ -1,4 +1,4 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="Workspace File Browser", lifespan=lifespan)
+    app = FastAPI(title="web-post", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -39,3 +39,4 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     mount_frontend(app)
     return app
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
@@ -22,7 +22,7 @@ class ResponseMapper(ABC):
 
 
 class RuleBasedResponseMapper(ResponseMapper):
-    TEMPLATE_DIR = Path(os.getenv("FUXING_DATA_ROOT", Path(__file__).resolve().parents[3] / "data")) / "templates" / "responses"
+    TEMPLATE_DIR = Path(os.getenv("WEB_POST_DATA_ROOT", Path(__file__).resolve().parents[3] / "data")) / "templates" / "responses"
 
     def __init__(self, rule_name: str | None = None, rules: dict[str, Any] | None = None):
         if rule_name is None and rules is None:
@@ -399,3 +399,4 @@ def _normalize_response_rules(response_format: dict[str, Any]) -> dict[str, Any]
         return rules
 
     return response_format
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import os
@@ -41,19 +41,19 @@ def _ensure_runtime_dirs(base_dir: Path) -> tuple[Path, Path, Path]:
 
 def _set_default_env(base_dir: Path, *, host: str, port: int, filesystem_root: str | None = None) -> None:
     data_dir, datasets_dir, html_dir = _ensure_runtime_dirs(base_dir)
-    for key, value in _read_env_file(base_dir / "fuxing.env").items():
+    for key, value in _read_env_file(base_dir / "web-post.env").items():
         os.environ.setdefault(key, value)
 
-    os.environ.setdefault("FUXING_DATA_ROOT", str(data_dir))
-    os.environ.setdefault("FUXING_FILESYSTEM_ROOT", str(Path(base_dir.anchor or "/")))
-    os.environ.setdefault("FUXING_DATASETS_ROOT", str(datasets_dir))
-    os.environ.setdefault("FUXING_FRONTEND_DIST", str(html_dir))
+    os.environ.setdefault("WEB_POST_DATA_ROOT", str(data_dir))
+    os.environ.setdefault("WEB_POST_FILESYSTEM_ROOT", str(Path(base_dir.anchor or "/")))
+    os.environ.setdefault("WEB_POST_DATASETS_ROOT", str(datasets_dir))
+    os.environ.setdefault("WEB_POST_FRONTEND_DIST", str(html_dir))
     os.environ.setdefault("LOG_DIR", str(data_dir / "logs"))
     os.environ.setdefault("LOG_LEVEL", "INFO")
-    os.environ["FUXING_BASE_URL"] = f"http://{host}:{port}"
+    os.environ["WEB_POST_BASE_URL"] = f"http://{host}:{port}"
 
     if filesystem_root:
-        os.environ["FUXING_FILESYSTEM_ROOT"] = str(Path(filesystem_root).expanduser().resolve(strict=False))
+        os.environ["WEB_POST_FILESYSTEM_ROOT"] = str(Path(filesystem_root).expanduser().resolve(strict=False))
 
 
 def _open_browser_later(url: str, delay_seconds: float = 1.0) -> None:
@@ -66,7 +66,7 @@ def _open_browser_later(url: str, delay_seconds: float = 1.0) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Start the Fuxing local web application.")
+    parser = argparse.ArgumentParser(description="Start the web-post local web application.")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind. Default: 127.0.0.1")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind. Default: 8000")
     parser.add_argument("--filesystem-root", default=None, help="Root directory shown in the file browser dialog.")
@@ -81,11 +81,11 @@ def main() -> None:
     _set_default_env(base_dir, host=args.host, port=args.port, filesystem_root=args.filesystem_root)
 
     url = f"http://{args.host}:{args.port}"
-    print(f"Fuxing is starting at {url}")
-    print(f"File system root: {os.environ['FUXING_FILESYSTEM_ROOT']}")
-    print(f"Data directory: {os.environ['FUXING_DATA_ROOT']}")
-    print(f"Datasets directory: {os.environ['FUXING_DATASETS_ROOT']}")
-    print(f"Frontend directory: {os.environ['FUXING_FRONTEND_DIST']}")
+    print(f"web-post is starting at {url}")
+    print(f"File system root: {os.environ['WEB_POST_FILESYSTEM_ROOT']}")
+    print(f"Data directory: {os.environ['WEB_POST_DATA_ROOT']}")
+    print(f"Datasets directory: {os.environ['WEB_POST_DATASETS_ROOT']}")
+    print(f"Frontend directory: {os.environ['WEB_POST_FRONTEND_DIST']}")
 
     if not args.no_browser:
         _open_browser_later(url)

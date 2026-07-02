@@ -54,22 +54,22 @@ def run(
 
 if __name__ == "__main__":
     #--------------------------------------------------------------------------------
-    # 数据集目录: 
-    #    目录下必须包含图片文件夹和标签文件夹
-    #    图片文件夹必须是: images
-    #    标签文件夹必须是: labelme, xmls, labels
-    # input_format 支持: 'labelme', 'voc', 'yolo' 
-    # 分别对应的标签文件夹名称必须为：labelme, xmls, labels
+
+
+
+
+
+
     # --------------------------------------------------------------------------------
 
-    # dataset_dir = "/workspace/projects/00_datasets/people"  # 数据集目录
-    dataset_dir = "./results"  # 数据集目录
 
-    DET_DIR = Path("./results/dets/x_smoke")  # 检测结果目录
+    dataset_dir = "./results"
 
-    names = ["smoking"]  # 检测类别名称列表
+    DET_DIR = Path("./results/dets/x_smoke")
+
+    names = ["smoking"]
     
-    input_format = "voc"  # 输入 ground truth 标签的格式
+    input_format = "voc"
 
     conf_threshold = 0.5
     iou_threshold = 0.2

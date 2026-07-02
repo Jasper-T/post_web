@@ -1,4 +1,4 @@
-import os
+﻿import os
 from pathlib import Path
 
 
@@ -7,10 +7,10 @@ def _resolve_path_env(name: str, default: Path) -> Path:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_ROOT = _resolve_path_env("FUXING_DATA_ROOT", PROJECT_ROOT / "data")
-FILESYSTEM_ROOT = _resolve_path_env("FUXING_FILESYSTEM_ROOT", Path.cwd().anchor or Path("/"))
-DATASETS_ROOT = _resolve_path_env("FUXING_DATASETS_ROOT", PROJECT_ROOT / "datasets")
-FRONTEND_DIST = _resolve_path_env("FUXING_FRONTEND_DIST", PROJECT_ROOT / "frontend" / "dist")
+DATA_ROOT = _resolve_path_env("WEB_POST_DATA_ROOT", PROJECT_ROOT / "data")
+FILESYSTEM_ROOT = _resolve_path_env("WEB_POST_FILESYSTEM_ROOT", Path.cwd().anchor or Path("/"))
+DATASETS_ROOT = _resolve_path_env("WEB_POST_DATASETS_ROOT", PROJECT_ROOT / "datasets")
+FRONTEND_DIST = _resolve_path_env("WEB_POST_FRONTEND_DIST", PROJECT_ROOT / "frontend" / "dist")
 
 CORS_ORIGINS = [
     "http://localhost:5173",

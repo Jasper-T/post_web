@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import json
@@ -109,7 +109,7 @@ def list_algorithms():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Pipeline helper for create/run in fuxing_2")
+    parser = argparse.ArgumentParser(description="Pipeline helper for create/run in web-post")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     list_parser = subparsers.add_parser("list", help="List registered pipelines")
@@ -215,3 +215,4 @@ def _import_image_utils():
 
 if __name__ == "__main__":
     main()
+

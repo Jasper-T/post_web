@@ -25,6 +25,8 @@ class DsetkitBaseRequest(BaseModel):
     sourceFormat: DatasetFormat
     names: list[str] | str = Field(default_factory=list)
     outDir: str | None = None
+    pipelineName: str | None = None
+    cacheBucket: str | None = None
 
 
 class DsetkitConvertRequest(DsetkitBaseRequest):
@@ -52,6 +54,8 @@ class DsetkitPredConvertRequest(BaseModel):
     names: list[str] | str = Field(default_factory=list)
     predictions: list[DsetkitPredictionItem] = Field(default_factory=list)
     outDir: str | None = None
+    pipelineName: str | None = None
+    cacheBucket: str | None = None
 
 
 class DsetkitEvaluateRequest(BaseModel):

@@ -109,13 +109,13 @@ def run(path, names, det_dir, output_dir,):
 
 if __name__ == "__main__":
     
-    img_path = "/workspace/projects/00_datasets/smk/images/1773960001836.jpg"  # 图片路径, 支持: 单个图片路径, 或 图片目录路径
+    img_path = "/workspace/projects/00_datasets/smk/images/1773960001836.jpg"
     
-    det_dir = "results/dets/f_welding"  # 检测结果目录
+    det_dir = "results/dets/f_welding"
     
-    plot_dir = "results/plot"  # 标注图片输出路径
+    plot_dir = "results/plot"
     
-    names = ["welding"]  # 检测类别名称列表
+    names = ["welding"]
 
     run(
         path = img_path, 

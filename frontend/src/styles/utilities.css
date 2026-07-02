@@ -1,0 +1,20 @@
+/* Small utility classes for one-off composition. */
+.ui-muted {
+  color: var(--ui-color-muted);
+}
+
+.ui-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-scroll-y {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ui-mono {
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}

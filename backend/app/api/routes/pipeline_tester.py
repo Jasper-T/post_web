@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, Query
 
 from backend.app.schemas.pipeline_tester import (
@@ -36,10 +37,14 @@ from backend.app.services.pipeline_tester import (
     render_pipeline_pred_visualization,
     update_pipeline_group_name,
 )
-from backend.app.services.visualization import generate_gt_cache, resolve_visualization_cache_path
+from backend.app.services.visualization import delete_pipeline_cache_buckets, generate_gt_cache, list_pipeline_cache_buckets, resolve_visualization_cache_path
 
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
+
+
+class DeleteCacheBucketsRequest(BaseModel):
+    buckets: list[str] = []
 
 
 @router.get("", response_model=PipelineListResponse)
@@ -109,6 +114,18 @@ def read_pipeline_results(
 @router.post("/{name}/run", response_model=RunPipelineResponse)
 def execute_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
     return run_pipeline(name, request)
+
+
+@router.get("/{name}/cache")
+def read_pipeline_cache(name: str) -> dict:
+    get_pipeline_editor(name)
+    return {"pipelineName": name, "items": list_pipeline_cache_buckets(name)}
+
+
+@router.delete("/{name}/cache")
+def delete_pipeline_cache(name: str, request: DeleteCacheBucketsRequest) -> dict:
+    get_pipeline_editor(name)
+    return delete_pipeline_cache_buckets(name, request.buckets)
 
 
 @router.post("/{name}/visualizations/pred", response_model=VisualizationResponse)

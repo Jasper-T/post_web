@@ -21,8 +21,9 @@ from backend.pipeline_core import (
     build_pipeline_bundle,
     create_pipeline_group,
     delete_pipeline_group,
-    get_group_pipeline_asset_dir,
     get_group_pipeline_dir,
+    get_pipeline_asset_relative_path,
+    get_pipeline_asset_relative_paths,
     get_pipeline_definition,
     get_pipeline_groups,
     get_pipeline_names,
@@ -38,6 +39,8 @@ from backend.pipeline_core import (
 )
 from backend.pipeline_core.registry import DATA_ROOT, TEMPLATES_DIR
 from backend.app.services.visualization import (
+    CACHE_ROOT,
+    cache_bucket_for_path,
     clear_pred_cache,
     get_pred_cache_path,
     get_pred_saved_path,
@@ -68,8 +71,6 @@ from backend.app.schemas.pipeline_tester import (
 PROJECT_ROOT = DATA_ROOT
 REQUEST_TEMPLATE_DIR = TEMPLATES_DIR / "requests"
 RESPONSE_TEMPLATE_DIR = TEMPLATES_DIR / "responses"
-RESULTS_ROOT = DATA_ROOT / "results"
-RUN_OUTPUT_DIR = RESULTS_ROOT
 RUN_OUTPUT_BUCKET_HOURS = 2
 RUN_OUTPUT_RETENTION_FOLDERS = 6
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
@@ -113,11 +114,12 @@ def get_pipeline_editor(name: str) -> PipelineEditor:
 
     _validate_editor_dependencies(definition)
 
-    header_template = _read_optional_project_json(definition.header_json)
-    body_template = _read_optional_project_json(definition.body_json)
-    response_template = _read_optional_project_json(definition.response_template_json)
-    response_map = _read_optional_project_json(definition.response_map_json)
-    post_config = _read_optional_project_json(definition.post_config_json)
+    asset_paths = get_pipeline_asset_relative_paths(definition, existing_only=True)
+    header_template = _read_optional_project_json(asset_paths.get("header"))
+    body_template = _read_optional_project_json(asset_paths.get("body"))
+    response_template = _read_optional_project_json(asset_paths.get("response"))
+    response_map = _read_optional_project_json(asset_paths.get("mapping"))
+    post_config = _read_optional_project_json(asset_paths.get("post_config"))
     response_config = definition.response_config
     response_rules = _read_optional_project_json(response_config.rule_json) if response_config else {}
     response_mapping = _map_payload_to_response_mapping(response_map) or _rules_to_response_mapping(response_rules or {})
@@ -142,28 +144,23 @@ def get_pipeline_editor(name: str) -> PipelineEditor:
         defaultExtra=default_inputs.get("extra") or {},
         templateInput=response_template or (response_config.template_input if response_config else None),
         postConfig=post_config or {},
-        assetPaths={
-            "header": definition.header_json,
-            "body": definition.body_json,
-            "response": definition.response_template_json,
-            "mapping": definition.response_map_json,
-            "post_config": definition.post_config_json,
-        },
+        assetPaths=asset_paths,
         connectTimeout=definition.connect_timeout,
         readTimeout=definition.read_timeout,
     )
 
 
 def _validate_editor_dependencies(definition) -> None:
-    has_mapping_dependency = bool(definition.response_map_json)
-    has_post_config_dependency = bool(definition.post_config_json)
+    asset_paths = get_pipeline_asset_relative_paths(definition, existing_only=True)
+    has_mapping_dependency = bool(asset_paths.get("mapping"))
+    has_post_config_dependency = bool(asset_paths.get("post_config"))
     if not (has_mapping_dependency or has_post_config_dependency):
         return
 
     missing = []
-    if not _project_json_exists(definition.body_json):
+    if not _project_json_exists(asset_paths.get("body")):
         missing.append("body.json")
-    if not _project_json_exists(definition.response_template_json):
+    if not _project_json_exists(asset_paths.get("response")):
         missing.append("response.json")
     if missing:
         dependencies = []
@@ -194,8 +191,25 @@ def _validate_pipeline_save_dependencies(editor: PipelineEditor) -> None:
         )
 
 
+
+def _validate_unique_pipeline_identity(editor: PipelineEditor) -> None:
+    original_name = (editor.originalName or "").strip()
+    next_name = editor.name.strip()
+    next_display = editor.displayName.strip()
+    definitions = get_pipeline_names()
+
+    for name, definition in definitions.items():
+        if name == original_name:
+            continue
+        if name == next_name:
+            raise HTTPException(status_code=409, detail=f"Pipeline name already exists: {next_name}")
+        if definition.display_name.strip() == next_display:
+            raise HTTPException(status_code=409, detail=f"Display name already exists: {next_display}")
+
+
 def save_pipeline(editor: PipelineEditor) -> SavePipelineResponse:
     _validate_pipeline_save_dependencies(editor)
+    _validate_unique_pipeline_identity(editor)
     original_name = (editor.originalName or "").strip()
     if original_name and original_name != editor.name:
         try:
@@ -222,7 +236,6 @@ def save_pipeline(editor: PipelineEditor) -> SavePipelineResponse:
 
     normalized_mapping = _normalize_response_mapping(editor.responseMapping)
     response_rules = _response_mapping_to_rules(normalized_mapping)
-    has_header = _has_json_content(editor.headerTemplate) or bool(editor.assetPaths.get("header"))
     has_body = _has_json_content(editor.bodyTemplate) or bool(editor.assetPaths.get("body"))
     has_response = _has_json_content(editor.templateInput) or bool(editor.assetPaths.get("response"))
     has_mapping = bool(editor.assetPaths.get("mapping")) or _is_meaningful_mapping(normalized_mapping)
@@ -234,11 +247,11 @@ def save_pipeline(editor: PipelineEditor) -> SavePipelineResponse:
             detail="Body JSON and Response JSON are required when Mapping or Post Config is configured",
         )
 
-    header_json = _write_optional_json(header_path, editor.headerTemplate or {}, True)
-    body_json = _write_optional_json(body_path, editor.bodyTemplate or {}, True)
-    response_template_json = _write_optional_json(response_path, editor.templateInput or {}, True)
-    response_map_json = _write_optional_json(map_path, _response_mapping_to_storage_payload(normalized_mapping), True)
-    post_config_json = _write_optional_json(post_config_path, editor.postConfig or {}, True)
+    _write_optional_json(header_path, editor.headerTemplate or {}, True)
+    _write_optional_json(body_path, editor.bodyTemplate or {}, True)
+    _write_optional_json(response_path, editor.templateInput or {}, True)
+    _write_optional_json(map_path, _response_mapping_to_storage_payload(normalized_mapping), True)
+    _write_optional_json(post_config_path, editor.postConfig or {}, True)
     rule_json = _write_optional_json(rule_path, response_rules, has_mapping)
 
     default_inputs = {
@@ -255,11 +268,6 @@ def save_pipeline(editor: PipelineEditor) -> SavePipelineResponse:
         transport=editor.transport,
         method=editor.method,
         image_directory=None,
-        header_json=header_json,
-        body_json=body_json,
-        response_template_json=response_template_json,
-        response_map_json=response_map_json,
-        post_config_json=post_config_json,
         default_inputs={key: value for key, value in default_inputs.items() if value},
         response_config=ResponseParserConfig(rule_json=rule_json, template_input=None) if rule_json else None,
         connect_timeout=editor.connectTimeout,
@@ -277,45 +285,38 @@ def save_pipeline(editor: PipelineEditor) -> SavePipelineResponse:
 def save_pipeline_asset(request: PipelineAssetSaveRequest) -> PipelineAssetResponse:
     target_path = _build_asset_path(
         group_name=request.groupName,
+        pipeline_name=request.pipelineName,
         display_name=request.displayName,
         file_name=request.fileName,
     )
     _write_json(target_path, request.content)
 
     if request.pipelineName:
-        asset_field = {
-            "header.json": "header_json",
-            "body.json": "body_json",
-            "response.json": "response_template_json",
-            "mapping.json": "response_map_json",
-            "post_config.json": "post_config_json",
-        }.get(target_path.name)
-        if asset_field:
-            try:
-                timeout_kwargs: dict[str, float] = {}
-                if asset_field == "post_config_json":
-                    if request.content.get("connectTimeout") is not None:
-                        timeout_kwargs["connect_timeout"] = float(request.content["connectTimeout"])
-                    if request.content.get("readTimeout") is not None:
-                        timeout_kwargs["read_timeout"] = float(request.content["readTimeout"])
-                response_rule_json = None
-                if asset_field == "response_map_json":
-                    mapping = _map_payload_to_response_mapping(request.content)
-                    if mapping is None:
-                        raise HTTPException(status_code=400, detail="Mapping content is empty")
-                    definition = get_pipeline_definition(request.pipelineName)
-                    rule_path = get_group_pipeline_dir(definition.group_name, request.pipelineName) / "rule.json"
-                    _write_json(rule_path, _response_mapping_to_rules(mapping))
-                    response_rule_json = _to_project_relative(rule_path)
+        try:
+            timeout_kwargs: dict[str, float] = {}
+            response_rule_json = None
+            if target_path.name == "post_config.json":
+                if request.content.get("connectTimeout") is not None:
+                    timeout_kwargs["connect_timeout"] = float(request.content["connectTimeout"])
+                if request.content.get("readTimeout") is not None:
+                    timeout_kwargs["read_timeout"] = float(request.content["readTimeout"])
+            if target_path.name == "mapping.json":
+                mapping = _map_payload_to_response_mapping(request.content)
+                if mapping is None:
+                    raise HTTPException(status_code=400, detail="Mapping content is empty")
+                definition = get_pipeline_definition(request.pipelineName)
+                rule_path = get_group_pipeline_dir(definition.group_name, request.pipelineName) / "rule.json"
+                _write_json(rule_path, _response_mapping_to_rules(mapping))
+                response_rule_json = _to_project_relative(rule_path)
+            if timeout_kwargs or response_rule_json is not None:
                 update_pipeline_definition_assets(
                     request.pipelineName,
-                    asset_paths={asset_field: _to_project_relative(target_path)},
                     response_rule_json=response_rule_json,
                     **timeout_kwargs,
                 )
-            except KeyError:
-                # Assets can be prepared before the pipeline itself is first saved.
-                pass
+        except KeyError:
+            # Assets can be prepared before the pipeline itself is first saved.
+            pass
 
     return PipelineAssetResponse(
         status="success",
@@ -366,8 +367,8 @@ def update_pipeline_group_name(name: str, request: PipelineGroupRenameRequest) -
 
 def remove_pipeline_group(name: str) -> PipelineListResponse:
     normalized_group = normalize_group_name(name)
-    if normalized_group == DELETED_GROUP_NAME:
-        raise HTTPException(status_code=400, detail="Deleted group cannot be removed")
+    if normalized_group in {DELETED_GROUP_NAME, UNGROUPED_GROUP_NAME}:
+        raise HTTPException(status_code=400, detail=f"{normalized_group} group cannot be removed")
     reassign_group_members(normalized_group, UNGROUPED_GROUP_NAME)
     delete_pipeline_group(normalized_group)
     return list_pipelines()
@@ -411,22 +412,10 @@ def load_pipeline_run_results(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Pipeline not found: {name}") from exc
 
-    result_root = (RESULTS_ROOT / name / "post").resolve(strict=False)
-    if not result_root.exists():
+
+    source_dir = cache_bucket_path_for_results(name, run_folder, input_path)
+    if source_dir is None:
         return PipelineRunResultsResponse(pipelineName=name, items=[])
-
-    if run_folder:
-        source_dir = Path(run_folder).resolve(strict=False)
-        if source_dir != result_root and result_root not in source_dir.parents:
-            raise HTTPException(status_code=403, detail="Result folder is outside the current pipeline post directory")
-        if not source_dir.exists() or not source_dir.is_dir():
-            raise HTTPException(status_code=404, detail="Result folder does not exist")
-    else:
-        run_directories = [path for path in result_root.iterdir() if path.is_dir()]
-        if not run_directories:
-            return PipelineRunResultsResponse(pipelineName=name, items=[])
-        source_dir = max(run_directories, key=lambda path: path.name)
-
     summary_path = source_dir / "_summary.json"
     if not summary_path.is_file():
         return PipelineRunResultsResponse(pipelineName=name, items=[])
@@ -449,11 +438,14 @@ def load_pipeline_run_results(
         try:
             result_file = metadata.get("result_file")
             parsed = _read_json(source_dir / result_file) if result_file else None
+            raw_file = metadata.get("raw_file")
+            raw_response = _read_json(source_dir / raw_file) if raw_file else None
             item = RunPipelineItem(
                 imagePath=metadata["image_path"],
                 ok=metadata.get("ok", False),
                 elapsedMs=metadata.get("elapsed_ms"),
                 parsed=parsed,
+                rawResponse=raw_response,
                 error=metadata.get("error"),
                 predCachePath=metadata.get("pred_cache_path") or get_pred_cache_path(name, metadata["image_path"]),
                 predSavedPath=None,
@@ -490,12 +482,10 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
         clear_pred_cache(name)
 
     run_dir = None
-    cache_bucket = _run_bucket_name(datetime.now())
+    cache_bucket = cache_bucket_for_path(input_path)
     if request.saveResults:
-        timestamp = cache_bucket
-        run_dir = RESULTS_ROOT / name / "post" / timestamp
+        run_dir = CACHE_ROOT / name / cache_bucket / "post"
         run_dir.mkdir(parents=True, exist_ok=True)
-        _prune_run_directories(run_dir.parent, keep=RUN_OUTPUT_RETENTION_FOLDERS)
 
     items: list[RunPipelineItem] = []
     summary_items: list[dict[str, Any]] = []
@@ -511,6 +501,7 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
         started_at = perf_counter()
         raw_response: dict[str, Any] | None = None
         result_file: str | None = None
+        raw_file: str | None = None
         try:
             raw_response = bundle.run_json(image_path)
             try:
@@ -536,8 +527,10 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
                 rawResponse=raw_response,
                 predCachePath=pred_cache_path,
             )
+            raw_file = None
             if run_dir is not None:
-                result_file = _write_parsed_result(run_dir, image_path, parsed)
+                result_file = _write_result_json(run_dir, image_path, parsed, "parsed")
+                raw_file = _write_result_json(run_dir, image_path, raw_response, "raw")
             succeeded += 1
         except Exception as exc:
             pred_cache_path = None
@@ -563,6 +556,7 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
             "elapsed_ms": item.elapsedMs,
             "error": item.error,
             "result_file": result_file,
+            "raw_file": raw_file,
             "pred_cache_path": item.predCachePath,
         })
 
@@ -595,12 +589,27 @@ def run_pipeline(name: str, request: RunPipelineRequest) -> RunPipelineResponse:
 
 
 def render_pipeline_pred_visualization(name: str, image_path: str, parsed: Any) -> str | None:
-    return render_pred_cache(name, image_path, parsed, _get_pipeline_plot_fields(name))
+    return render_pred_cache(name, image_path, parsed, _get_pipeline_plot_fields(name), cache_bucket_for_path(image_path))
+
+
+def cache_bucket_path_for_results(name: str, run_folder: str | None, input_path: str | None) -> Path | None:
+    if run_folder:
+        candidate = Path(run_folder).resolve(strict=False)
+        if candidate.is_dir():
+            return candidate / "post" if candidate.name != "post" else candidate
+        return CACHE_ROOT / name / cache_bucket_for_path(run_folder) / "post"
+    if input_path:
+        return CACHE_ROOT / name / cache_bucket_for_path(input_path) / "post"
+    root = CACHE_ROOT / name
+    if not root.exists():
+        return None
+    buckets = sorted((path for path in root.iterdir() if (path / "post").is_dir()), key=lambda path: path.stat().st_mtime, reverse=True)
+    return buckets[0] / "post" if buckets else None
 
 
 def _get_pipeline_plot_fields(name: str) -> list[str]:
     definition = get_pipeline_definition(name)
-    mapping = _read_optional_project_json(definition.response_map_json)
+    mapping = _read_optional_project_json(get_pipeline_asset_relative_path(definition, "mapping", existing_only=True))
     if isinstance(mapping, dict) and isinstance(mapping.get("plotFields"), list):
         return [str(field) for field in mapping["plotFields"] if str(field)]
     rules = _read_optional_project_json(definition.response_config.rule_json) if definition.response_config else {}
@@ -665,10 +674,10 @@ def _looks_like_base64(value: str) -> bool:
     return all(char in allowed for char in compact)
 
 
-def _write_parsed_result(run_dir: Path, image_path: Path, parsed: Any) -> str:
+def _write_result_json(run_dir: Path, image_path: Path, value: Any, kind: str) -> str:
     digest = hashlib.sha1(str(image_path).encode("utf-8")).hexdigest()[:10]
-    file_name = f"{image_path.stem}-{digest}.json"
-    _write_json(run_dir / file_name, parsed)
+    file_name = f"{image_path.stem}-{digest}.{kind}.json"
+    _write_json(run_dir / file_name, value)
     return file_name
 
 
@@ -970,9 +979,11 @@ def _project_json_exists(raw_path: str | None) -> bool:
     return path.exists() and path.suffix.lower() == ".json"
 
 
-def _build_asset_path(*, group_name: str | None, display_name: str, file_name: str) -> Path:
+def _build_asset_path(*, group_name: str | None, pipeline_name: str | None, display_name: str, file_name: str) -> Path:
     safe_name = _normalize_asset_file_name(file_name)
-    return get_group_pipeline_asset_dir(normalize_group_name(group_name), display_name) / safe_name
+    if pipeline_name and pipeline_name.strip():
+        return get_group_pipeline_dir(normalize_group_name(group_name), pipeline_name.strip()) / safe_name
+    return get_group_pipeline_dir(normalize_group_name(group_name), _normalize_asset_dir_name(display_name)) / safe_name
 
 
 def _resolve_asset_path(
@@ -989,7 +1000,7 @@ def _resolve_asset_path(
     else:
         if not display_name or not file_name:
             raise HTTPException(status_code=422, detail="displayName and fileName are required")
-        target_path = _build_asset_path(group_name=group_name, display_name=display_name, file_name=file_name)
+        target_path = _build_asset_path(group_name=group_name, pipeline_name=None, display_name=display_name, file_name=file_name)
 
     resolved = target_path.resolve(strict=False)
     project_root = PROJECT_ROOT.resolve()
@@ -1000,6 +1011,11 @@ def _resolve_asset_path(
     if not resolved.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {resolved}")
     return resolved
+
+
+def _normalize_asset_dir_name(value: str) -> str:
+    name = value.strip().replace("\\", "_").replace("/", "_")
+    return name or "unnamed_pipeline"
 
 
 def _normalize_asset_file_name(file_name: str) -> str:

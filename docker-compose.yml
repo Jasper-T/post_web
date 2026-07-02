@@ -1,4 +1,4 @@
-services:
+﻿services:
   webui-backend:
     image: webui-backend:latest
     container_name: webui-backend
@@ -8,19 +8,19 @@ services:
       args:
         DOCKER_HUB_MIRROR: ${DOCKER_HUB_MIRROR:-docker.io/library}
         PYTHON_IMAGE_TAG: ${PYTHON_IMAGE_TAG:-3.12-slim}
-    working_dir: /workspace/project
+    working_dir: /workspace
     command: >
       sh -c "uvicorn backend.main:app --host 0.0.0.0 --port 8000"
     environment:
-      PYTHONPATH: /workspace/project
-      FUXING_DATA_ROOT: /data/fuxing
+      PYTHONPATH: /workspace
+      WEB_POST_DATA_ROOT: /data/web-post
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_DIR: /data/fuxing/logs
+      LOG_DIR: /data/web-post/logs
       LOG_ROTATION: ${LOG_ROTATION:-10 MB}
       LOG_RETENTION: ${LOG_RETENTION:-14 days}
     volumes:
-      - ./:/workspace/project
-      - ${FUXING_DATA_DIR:-./data}:/data/fuxing
+      - ./:/workspace
+      - ${WEB_POST_DATA_DIR:-./data}:/data/web-post
       - D:/works/projects/00_datasets/:/data/datasets/
     ports:
       - "8000:8000"
@@ -39,3 +39,4 @@ services:
     ports:
       - "5173:80"
     restart: unless-stopped
+

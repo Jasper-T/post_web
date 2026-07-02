@@ -3,11 +3,11 @@
     <div class="json-preview-tree-row">
       <button
         v-if="isExpandable"
-        class="json-preview-toggle"
+        class="json-preview-toggle ui-icon-collapse ui-icon-btn"
         type="button"
         @click="expanded = !expanded"
       >
-        {{ expanded ? "−" : "+" }}
+        {{ expanded ? "-" : "+" }}
       </button>
       <span v-else class="json-preview-toggle-placeholder"></span>
 

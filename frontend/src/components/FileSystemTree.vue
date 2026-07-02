@@ -1,11 +1,11 @@
 <template>
-  <section class="panel explorer-panel">
-    <header class="panel-header">
+  <section class="panel explorer-panel ui-panel">
+    <header class="panel-header ui-panel-header">
       <div>
         <p v-if="eyebrow" class="eyebrow">{{ eyebrow }}</p>
         <h2>{{ title }}</h2>
       </div>
-      <div class="header-actions">
+      <div class="header-actions ui-toolbar">
         <FileUploadManager
           v-if="showUploadButton"
           :target-path="uploadTargetPath"
@@ -19,7 +19,7 @@
           @apply="applyFilter"
         />
         <button
-          class="small-button icon-button"
+          class="ui-action-refresh ui-icon-refresh ui-btn ui-icon-btn"
           type="button"
           :aria-label="refreshLabel"
           :disabled="refreshDisabled"
@@ -34,7 +34,7 @@
         </button>
         <button
           v-if="showAddButton"
-          class="small-button icon-button"
+          class="ui-icon-add ui-btn ui-icon-btn"
           type="button"
           :aria-label="addLabel"
           :disabled="addDisabled"
@@ -48,7 +48,7 @@
       </div>
     </header>
 
-    <div v-if="rootNode" class="tree-container">
+    <div v-if="rootNode" class="tree-container ui-tree">
       <p v-if="rootNode.error" class="tree-error root-tree-error">
         {{ rootNode.error }}
       </p>
@@ -64,7 +64,7 @@
       <div v-else-if="isFilterActive && !hasFilterResults" class="empty-state compact-empty-state">
         No matches found.
       </div>
-      <ul v-else class="tree-list">
+      <ul v-else class="tree-list ui-tree-children">
         <TreeNode
           v-if="showRootNode"
           :node="displayRootNode"
@@ -93,7 +93,7 @@
           />
           <li v-if="rootNode.hasMoreChildren && !isFilterActive">
             <button
-              class="tree-load-more"
+              class="ui-list-item ui-btn ui-tree-load-more"
               type="button"
               :disabled="rootNode.loadingMore"
               @click="$emit('load-more', rootNode)"

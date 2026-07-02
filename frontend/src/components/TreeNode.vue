@@ -1,7 +1,7 @@
 <template>
-  <li>
+  <li class="ui-tree-branch">
     <div
-      class="tree-row"
+      class="tree-row ui-list-item ui-tree-node"
       :class="{ selected: selectedPath === node.path, 'upload-selected': highlightPath === node.path }"
       :style="{ paddingLeft: `${level * 16 + 8}px` }"
       @click="handleClick"
@@ -9,7 +9,7 @@
     >
       <button
         v-if="node.type === 'directory'"
-        class="tree-toggle"
+        class="tree-toggle ui-tree-toggle ui-icon-collapse ui-icon-btn"
         type="button"
         :disabled="node.loading || !node.hasChildren"
         @click.stop="toggleNode"
@@ -33,11 +33,11 @@
           <path d="M9 6l6 6-6 6" />
         </svg>
       </button>
-      <span v-else class="tree-toggle tree-toggle-placeholder"></span>
+      <span v-else class="tree-toggle tree-toggle-placeholder ui-tree-toggle ui-icon-collapse ui-icon-btn"></span>
 
       <svg
         v-if="node.type === 'directory'"
-        class="tree-icon folder-icon"
+        class="tree-icon folder-icon ui-tree-icon"
         viewBox="0 0 24 24"
         aria-hidden="true"
       >
@@ -48,7 +48,7 @@
       </svg>
       <svg
         v-else
-        class="tree-icon file-icon"
+        class="tree-icon file-icon ui-tree-icon"
         viewBox="0 0 24 24"
         aria-hidden="true"
       >
@@ -57,14 +57,14 @@
           fill="currentColor"
         />
       </svg>
-      <span class="tree-name" :title="node.path">{{ node.name }}</span>
+      <span class="tree-name ui-tree-label" :title="node.path">{{ node.name }}</span>
     </div>
 
     <p v-if="node.error" class="tree-error" :style="{ paddingLeft: `${level * 16 + 32}px` }">
       {{ node.error }}
     </p>
 
-    <ul v-if="node.expanded && node.children?.length" class="tree-list">
+    <ul v-if="node.expanded && node.children?.length" class="tree-list ui-tree-children">
       <TreeNode
         v-for="child in node.children"
         :key="child.path"
@@ -81,7 +81,7 @@
       />
       <li v-if="node.hasMoreChildren && !hideLoadMore">
         <button
-          class="tree-load-more"
+          class="ui-btn ui-tree-load-more"
           type="button"
           :style="{ paddingLeft: `${(level + 1) * 16 + 30}px` }"
           :disabled="node.loadingMore"

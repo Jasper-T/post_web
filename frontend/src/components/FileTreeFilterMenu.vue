@@ -1,7 +1,7 @@
 <template>
   <div ref="containerRef" class="file-filter-menu">
     <button
-      class="small-button file-filter-trigger"
+      class="file-filter-trigger ui-btn ui-btn-secondary"
       type="button"
       :class="{ active: hasActiveFilters || open }"
       :aria-expanded="open"
@@ -15,13 +15,13 @@
       <span v-if="hasActiveFilters" class="file-filter-trigger-count">{{ selectedCount }}</span>
     </button>
 
-    <div v-if="open" class="file-filter-popover" role="dialog" aria-label="File filter">
-      <div class="file-filter-popover-header">
+    <div v-if="open" class="file-filter-popover ui-popover ui-panel" role="dialog" aria-label="File filter">
+      <div class="file-filter-popover-header ui-panel-header">
         <div>
           <p class="eyebrow">Explorer Filter</p>
-          <h3>筛选文件树</h3>
+          <h3>Filter File Tree</h3>
         </div>
-        <button class="small-button icon-button" type="button" aria-label="Close filter" @click="closeOpen">
+        <button class="ui-action-close ui-icon-close ui-btn ui-icon-btn" type="button" aria-label="Close filter" @click="closeOpen">
           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M6 6 18 18M18 6 6 18"
@@ -34,8 +34,8 @@
         </button>
       </div>
 
-      <label class="file-filter-search">
-        <span>名称过滤</span>
+      <label class="file-filter-search ui-field">
+        <span>Name Filter</span>
         <input
           v-model.trim="draftQuery"
           class="file-filter-search-input"
@@ -46,8 +46,8 @@
         />
       </label>
 
-      <div class="file-filter-groups">
-        <section v-for="group in extensionGroups" :key="group.id" class="file-filter-group">
+      <div class="file-filter-groups ui-list">
+        <section v-for="group in extensionGroups" :key="group.id" class="file-filter-group ui-card">
           <div class="file-filter-group-header">
             <label class="file-filter-checkbox emphasis">
               <input
@@ -73,11 +73,11 @@
         </section>
       </div>
 
-      <footer class="file-filter-actions">
-        <button class="small-button" type="button" :disabled="!hasDraftFilters" @click="resetDraft">
+      <footer class="file-filter-actions ui-footer-actions">
+        <button class="ui-btn" type="button" :disabled="!hasDraftFilters" @click="resetDraft">
           Clear
         </button>
-        <button class="small-button primary-button" type="button" :disabled="isFiltering" @click="emitApply">
+        <button class="ui-btn ui-btn-primary" type="button" :disabled="isFiltering" @click="emitApply">
           Apply
         </button>
       </footer>
@@ -88,174 +88,43 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-const defaultExtensionGroups = [
-  {
-    id: "images",
-    label: "图片",
-    extensions: [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".svg"],
-  },
-  {
-    id: "videos",
-    label: "视频",
-    extensions: [".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v"],
-  },
-  {
-    id: "archives",
-    label: "压缩包",
-    extensions: [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tgz"],
-  },
-  {
-    id: "audio",
-    label: "音频",
-    extensions: [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"],
-  },
-];
-
 const props = defineProps({
-  query: {
-    type: String,
-    default: "",
-  },
-  extensions: {
-    type: Array,
-    default: () => [],
-  },
+  query: { type: String, default: "" },
+  extensions: { type: Array, default: () => [] },
   extensionGroups: {
     type: Array,
     default: () => [
-      {
-        id: "images",
-        label: "图片",
-        extensions: [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".svg"],
-      },
-      {
-        id: "videos",
-        label: "视频",
-        extensions: [".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v"],
-      },
-      {
-        id: "archives",
-        label: "压缩包",
-        extensions: [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tgz"],
-      },
-      {
-        id: "audio",
-        label: "音频",
-        extensions: [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"],
-      },
+      { id: "images", label: "Images", extensions: [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".svg"] },
+      { id: "videos", label: "Videos", extensions: [".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v"] },
+      { id: "archives", label: "Archives", extensions: [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tgz"] },
+      { id: "audio", label: "Audio", extensions: [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"] },
     ],
   },
-  isFiltering: {
-    type: Boolean,
-    default: false,
-  },
+  isFiltering: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["apply"]);
-
 const containerRef = ref(null);
 const open = ref(false);
 const draftQuery = ref(props.query);
 const draftExtensions = ref([...props.extensions]);
-
 const draftExtensionSet = computed(() => new Set(draftExtensions.value));
 const hasActiveFilters = computed(() => Boolean(props.query.trim()) || props.extensions.length > 0);
 const hasDraftFilters = computed(() => Boolean(draftQuery.value.trim()) || draftExtensions.value.length > 0);
-const selectedCount = computed(() => {
-  const queryCount = props.query.trim() ? 1 : 0;
-  return props.extensions.length + queryCount;
-});
+const selectedCount = computed(() => (props.query.trim() ? 1 : 0) + props.extensions.length);
 
-watch(
-  () => [props.query, props.extensions],
-  () => {
-    if (!open.value) {
-      syncDraftFromProps();
-    }
-  },
-  { deep: true },
-);
-
-function syncDraftFromProps() {
-  draftQuery.value = props.query;
-  draftExtensions.value = [...props.extensions];
-}
-
-function toggleOpen() {
-  if (!open.value) {
-    syncDraftFromProps();
-  }
-  open.value = !open.value;
-}
-
-function closeOpen() {
-  open.value = false;
-}
-
-function normalizeExtensions(list) {
-  return Array.from(new Set(list)).sort();
-}
-
-function toggleExtension(extension, checked) {
-  const next = new Set(draftExtensions.value);
-  if (checked) {
-    next.add(extension);
-  } else {
-    next.delete(extension);
-  }
-  draftExtensions.value = normalizeExtensions(Array.from(next));
-}
-
-function toggleGroup(extensions, checked) {
-  const next = new Set(draftExtensions.value);
-  for (const extension of extensions) {
-    if (checked) {
-      next.add(extension);
-    } else {
-      next.delete(extension);
-    }
-  }
-  draftExtensions.value = normalizeExtensions(Array.from(next));
-}
-
-function isGroupChecked(extensions) {
-  return extensions.every((extension) => draftExtensionSet.value.has(extension));
-}
-
-function countSelectedInGroup(extensions) {
-  return extensions.filter((extension) => draftExtensionSet.value.has(extension)).length;
-}
-
-function resetDraft() {
-  draftQuery.value = "";
-  draftExtensions.value = [];
-  emitApply();
-}
-
-function emitApply() {
-  emit("apply", {
-    query: draftQuery.value.trim(),
-    extensions: normalizeExtensions(draftExtensions.value),
-  });
-  closeOpen();
-}
-
-function handlePointerDown(event) {
-  if (!open.value) {
-    return;
-  }
-
-  const container = containerRef.value;
-  if (container && !container.contains(event.target)) {
-    closeOpen();
-  }
-}
-
-onMounted(() => {
-  window.addEventListener("pointerdown", handlePointerDown, true);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener("pointerdown", handlePointerDown, true);
-});
+watch(() => [props.query, props.extensions], () => { if (!open.value) syncDraftFromProps(); }, { deep: true });
+function syncDraftFromProps() { draftQuery.value = props.query; draftExtensions.value = [...props.extensions]; }
+function toggleOpen() { if (!open.value) syncDraftFromProps(); open.value = !open.value; }
+function closeOpen() { open.value = false; }
+function normalizeExtensions(list) { return Array.from(new Set(list)).sort(); }
+function toggleExtension(extension, checked) { const next = new Set(draftExtensions.value); checked ? next.add(extension) : next.delete(extension); draftExtensions.value = normalizeExtensions(Array.from(next)); }
+function toggleGroup(extensions, checked) { const next = new Set(draftExtensions.value); for (const extension of extensions) checked ? next.add(extension) : next.delete(extension); draftExtensions.value = normalizeExtensions(Array.from(next)); }
+function isGroupChecked(extensions) { return extensions.every((extension) => draftExtensionSet.value.has(extension)); }
+function countSelectedInGroup(extensions) { return extensions.filter((extension) => draftExtensionSet.value.has(extension)).length; }
+function resetDraft() { draftQuery.value = ""; draftExtensions.value = []; emitApply(); }
+function emitApply() { emit("apply", { query: draftQuery.value.trim(), extensions: normalizeExtensions(draftExtensions.value) }); closeOpen(); }
+function handlePointerDown(event) { if (!open.value) return; const container = containerRef.value; if (container && !container.contains(event.target)) closeOpen(); }
+onMounted(() => window.addEventListener("pointerdown", handlePointerDown, true));
+onBeforeUnmount(() => window.removeEventListener("pointerdown", handlePointerDown, true));
 </script>

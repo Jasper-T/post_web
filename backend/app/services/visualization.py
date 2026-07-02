@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +17,48 @@ CACHE_ROOT = DATA_ROOT / ".cache"
 FORMAT_SUFFIXES = {"yolo": ".txt", "labelme": ".json", "voc": ".xml"}
 
 
+def cache_bucket_for_path(raw_path: str | Path) -> str:
+    path = Path(raw_path).expanduser().resolve(strict=False)
+    bucket_path = path.parent if path.suffix else path
+    current_name = bucket_path.name
+    parent_name = bucket_path.parent.name
+    if parent_name and current_name:
+        return _safe_cache_name(f"{parent_name}_{current_name}")
+    return _safe_cache_name(current_name or "root")
+
+
+def cache_bucket_path(pipeline_name: str, cache_bucket: str) -> Path:
+    return CACHE_ROOT / pipeline_name / _safe_cache_name(cache_bucket)
+
+
+def list_pipeline_cache_buckets(pipeline_name: str) -> list[dict[str, Any]]:
+    root = CACHE_ROOT / pipeline_name
+    if not root.exists():
+        return []
+    items = []
+    for path in sorted((item for item in root.iterdir() if item.is_dir()), key=lambda item: item.name):
+        children = sorted(child.name for child in path.iterdir() if child.is_dir())
+        items.append({"name": path.name, "path": str(path), "children": children})
+    return items
+
+
+def delete_pipeline_cache_buckets(pipeline_name: str, buckets: list[str]) -> dict[str, Any]:
+    deleted = []
+    for bucket in buckets:
+        name = _safe_cache_name(bucket)
+        target = CACHE_ROOT / pipeline_name / name
+        if target.exists():
+            _remove_cache_directory(target)
+            deleted.append(name)
+    return {"status": "success", "deleted": deleted}
+
+
+def _safe_cache_name(value: str) -> str:
+    cleaned = "".join(char if char.isalnum() or char in {"_", "-", "."} else "_" for char in str(value).strip())
+    cleaned = cleaned.strip("._-")
+    return cleaned or "cache"
+
+
 def clear_all_visualization_caches() -> None:
     _remove_cache_directory(CACHE_ROOT, allow_cache_root=True)
 
@@ -28,13 +69,13 @@ def get_pred_saved_path(pipeline_name: str, image_path: str) -> str | None:
 
 def get_pred_cache_path(pipeline_name: str, image_path: str, cache_bucket: str | None = None) -> str | None:
     filename = _visualization_filename(Path(image_path))
-    if cache_bucket:
-        path = _cache_dir(pipeline_name, cache_bucket, "pred") / filename
-        return str(path) if path.is_file() else None
+    path = _cache_dir(pipeline_name, cache_bucket or cache_bucket_for_path(image_path), "pred") / filename
+    if path.is_file():
+        return str(path)
     pipeline_cache = CACHE_ROOT / pipeline_name
     if not pipeline_cache.exists():
         return None
-    for bucket in sorted((path for path in pipeline_cache.iterdir() if path.is_dir()), key=lambda path: path.name, reverse=True):
+    for bucket in sorted((path for path in pipeline_cache.iterdir() if path.is_dir()), key=lambda path: path.stat().st_mtime, reverse=True):
         path = bucket / "pred" / filename
         if path.is_file():
             return str(path)
@@ -59,7 +100,7 @@ def clear_pred_cache(pipeline_name: str) -> None:
 
 def render_pred_cache(pipeline_name: str, image_path: str, parsed: Any, plot_fields: list[str] | None = None, cache_bucket: str | None = None) -> str | None:
     detections = _normalize_detections(parsed)
-    cache_path = _cache_path(pipeline_name, cache_bucket, "pred", image_path)
+    cache_path = _cache_path(pipeline_name, cache_bucket or cache_bucket_for_path(image_path), "pred", image_path)
     _plot_detections(
         image_path,
         detections,
@@ -71,9 +112,6 @@ def render_pred_cache(pipeline_name: str, image_path: str, parsed: Any, plot_fie
 
 def generate_gt_cache(pipeline_name: str, image_paths: list[str], label_dir: str, fmt: str, names: list[str], cache_bucket: str | None = None) -> list[dict[str, Any]]:
     label_root = _resolve_dataset_directory(label_dir)
-    cache_dir = _cache_dir(pipeline_name, cache_bucket, "GT")
-    _remove_cache_directory(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
     suffix = FORMAT_SUFFIXES[fmt]
     items: list[dict[str, Any]] = []
 
@@ -83,13 +121,13 @@ def generate_gt_cache(pipeline_name: str, image_paths: list[str], label_dir: str
             label_path = label_root / f"{image_path.stem}{suffix}"
             if not label_path.is_file():
                 raise FileNotFoundError(f"Annotation not found: {label_path.name}")
-            output_path = cache_dir / _visualization_filename(image_path)
+            output_path = _cache_path(pipeline_name, cache_bucket or cache_bucket_for_path(image_path), "GT", image_path)
             _plot_label(image_path, label_path, fmt, names, output_path)
-            items.append({"imagePath": str(image_path), "cachePath": str(output_path)})
+            items.append({"imagePath": str(image_path), "cachePath": str(output_path), "labelPath": str(label_path)})
         except Exception as exc:
             try:
                 image_path = _resolve_dataset_file(raw_image_path)
-                output_path = cache_dir / _visualization_filename(image_path)
+                output_path = _cache_path(pipeline_name, cache_bucket or cache_bucket_for_path(image_path), "GT", image_path)
                 _plot_detections(image_path, [], [], output_path)
                 items.append({"imagePath": str(image_path), "cachePath": str(output_path), "error": str(exc)})
             except Exception as fallback_exc:
@@ -97,12 +135,8 @@ def generate_gt_cache(pipeline_name: str, image_paths: list[str], label_dir: str
     return items
 
 
-def _cache_bucket_name() -> str:
-    return datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-
-
 def _cache_dir(pipeline_name: str, cache_bucket: str | None, kind: str) -> Path:
-    return CACHE_ROOT / pipeline_name / (cache_bucket or _cache_bucket_name()) / kind
+    return CACHE_ROOT / pipeline_name / _safe_cache_name(cache_bucket or "cache") / kind
 
 
 def _remove_cache_directory(target: Path, *, allow_cache_root: bool = False) -> None:

@@ -1,7 +1,7 @@
 <template>
   <div class="file-upload-manager" :class="{ open: visible }">
     <button
-      class="small-button icon-button file-upload-trigger"
+      class="ui-icon-upload file-upload-trigger ui-btn ui-icon-btn"
       type="button"
       aria-label="Upload files"
       title="Upload files or folders"
@@ -13,30 +13,30 @@
       </svg>
     </button>
 
-    <div v-if="visible" class="file-upload-popover" @click.stop>
-      <div class="file-upload-header">
+    <div v-if="visible" class="file-upload-popover ui-popover ui-panel" @click.stop>
+      <div class="file-upload-header ui-panel-header">
         <div>
-          <strong>上传</strong>
-          <small :title="targetPath">{{ targetPath || "请先选择数据集目录内的项目" }}</small>
+          <strong>Upload</strong>
+          <small :title="targetPath">{{ targetPath || "Select a dataset item first" }}</small>
         </div>
-        <button class="small-button icon-button" type="button" aria-label="Close upload panel" @click="visible = false">
+        <button class="ui-action-close ui-icon-close ui-btn ui-icon-btn" type="button" aria-label="Close upload panel" @click="visible = false">
           <svg class="button-icon upload-close-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
       </div>
 
       <div
-        class="file-upload-dropzone"
+        class="file-upload-dropzone ui-card"
         :class="{ dragging }"
         @dragenter.prevent="dragging = true"
         @dragover.prevent="dragging = true"
         @dragleave.prevent="handleDragLeave"
         @drop.prevent="handleDrop"
       >
-        <strong>拖拽文件或文件夹到这里</strong>
-        <span>支持所有文件类型</span>
+        <strong>Drop files or folders here</strong>
+        <span>All file types supported</span>
         <div class="file-upload-choice-row">
-          <button class="small-button" type="button" :disabled="!targetAllowed" @click="fileInput?.click()">选择文件</button>
-          <button class="small-button" type="button" :disabled="!targetAllowed" @click="folderInput?.click()">选择文件夹</button>
+          <button class="ui-btn" type="button" :disabled="!targetAllowed" @click="fileInput?.click()">Select Files</button>
+          <button class="ui-btn" type="button" :disabled="!targetAllowed" @click="folderInput?.click()">Select Folder</button>
         </div>
         <input ref="fileInput" class="visually-hidden" type="file" multiple @change="handleFileInput" />
         <input ref="folderInput" class="visually-hidden" type="file" multiple webkitdirectory directory @change="handleFolderInput" />
@@ -44,21 +44,21 @@
 
       <div v-if="items.length" class="file-upload-progress-summary">
         <div>
-          <span>总体进度</span>
+          <span>Overall Progress</span>
           <strong>{{ overallPercent }}%</strong>
         </div>
         <div class="upload-progress-track"><span :style="{ width: overallPercent + '%' }"></span></div>
-        <small>{{ completedCount }}/{{ items.length }} 完成 · {{ formatBytes(totalLoaded) }}/{{ formatBytes(totalBytes) }}</small>
+        <small>{{ completedCount }}/{{ items.length }} complete - {{ formatBytes(totalLoaded) }}/{{ formatBytes(totalBytes) }}</small>
       </div>
 
-      <div v-if="items.length" class="file-upload-actions">
-        <button class="small-button" type="button" :disabled="!hasActiveItems" @click="cancelAll">全部取消</button>
-        <button class="small-button" type="button" :disabled="!hasFailedItems" @click="retryFailed">重试失败项</button>
-        <button class="small-button" type="button" :disabled="hasActiveItems" @click="clearFinished">清空列表</button>
+      <div v-if="items.length" class="file-upload-actions ui-toolbar">
+        <button class="ui-btn" type="button" :disabled="!hasActiveItems" @click="cancelAll">Cancel All</button>
+        <button class="ui-btn" type="button" :disabled="!hasFailedItems" @click="retryFailed">Retry Failed</button>
+        <button class="ui-btn" type="button" :disabled="hasActiveItems" @click="clearFinished">Clear List</button>
       </div>
 
-      <div v-if="items.length" class="file-upload-list">
-        <article v-for="item in items" :key="item.id" class="file-upload-item" :class="item.status">
+      <div v-if="items.length" class="file-upload-list ui-list">
+        <article v-for="item in items" :key="item.id" class="file-upload-item ui-list-item" :class="item.status">
           <div class="file-upload-item-title">
             <strong :title="item.relativePath">{{ item.relativePath }}</strong>
             <span>{{ statusText(item) }}</span>
@@ -67,8 +67,8 @@
           <div class="file-upload-item-meta">
             <small>{{ formatBytes(item.loaded) }}/{{ formatBytes(item.size) }}</small>
             <small v-if="item.error" class="upload-error" :title="item.error">{{ item.error }}</small>
-            <button v-if="item.status === 'uploading' || item.status === 'pending'" class="upload-inline-action" type="button" @click="cancelItem(item)">取消</button>
-            <button v-else-if="item.status === 'failed' || item.status === 'canceled'" class="upload-inline-action" type="button" @click="retryItem(item)">重试</button>
+            <button v-if="item.status === 'uploading' || item.status === 'pending'" class="upload-inline-action" type="button" @click="cancelItem(item)">Cancel</button>
+            <button v-else-if="item.status === 'failed' || item.status === 'canceled'" class="upload-inline-action" type="button" @click="retryItem(item)">Retry</button>
           </div>
         </article>
       </div>
@@ -174,11 +174,11 @@ function uploadItem(item) {
     }
     pumpQueue();
   };
-  xhr.onerror = () => finishFailed(item, "网络错误");
+  xhr.onerror = () => finishFailed(item, "Network error");
   xhr.onabort = () => {
     activeRequests.delete(item.id);
     item.status = "canceled";
-    item.error = "已取消";
+    item.error = "Canceled";
     pumpQueue();
   };
   xhr.send(item.file);
@@ -194,9 +194,9 @@ function finishFailed(item, message) {
 function responseError(xhr) {
   try {
     const detail = JSON.parse(xhr.responseText || "{}").detail;
-    return typeof detail === "string" ? detail : "上传失败 (" + xhr.status + ")";
+    return typeof detail === "string" ? detail : "Upload failed (" + xhr.status + ")";
   } catch {
-    return "上传失败 (" + xhr.status + ")";
+    return "Upload failed (" + xhr.status + ")";
   }
 }
 
@@ -205,7 +205,7 @@ function cancelItem(item) {
   if (request) request.abort();
   else if (item.status === "pending") {
     item.status = "canceled";
-    item.error = "已取消";
+    item.error = "Canceled";
     pumpQueue();
   }
 }
@@ -281,7 +281,13 @@ async function collectEntryFiles(entry, prefix, output) {
 }
 
 function statusText(item) {
-  return { pending: "等待中", uploading: item.percent + "%", success: item.result?.renamed ? "完成（已重命名）" : "完成", failed: "失败", canceled: "已取消" }[item.status] || item.status;
+  return {
+    pending: "Pending",
+    uploading: item.percent + "%",
+    success: item.result?.renamed ? "Done (renamed)" : "Done",
+    failed: "Failed",
+    canceled: "Canceled",
+  }[item.status] || item.status;
 }
 
 function formatBytes(value) {

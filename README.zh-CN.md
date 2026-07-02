@@ -1,188 +1,161 @@
-﻿# Post_web 中文说明
+﻿# web-post 中文说明
 
-post_web 是一个用于图片算法接口调试和数据集辅助处理的工具。它包含一个 FastAPI 后端和一个 Vue 3 前端，可以浏览图片、配置 HTTP 算法 pipeline、发送图片测试、解析接口返回、可视化检测框，并集成 dsetkit 做标注转换、可视化和结果评估。
+web-post 是一个用于图片算法接口调试、批量测试、结果查看、标注预览、标注转换和结果评估的工具。项目由 FastAPI 后端和 Vue 3 前端组成，集成 `dsetkit==0.4.0`，支持 Docker Compose、本地开发和 Windows 便携版发布。
 
 ## 主要功能
 
-- 浏览后端机器上指定范围内的图片文件。
-- 从前端所在机器选择文件或文件夹，并上传到后端机器的 `datasets` 目录。
-- 按 Collection 分组管理 pipeline，支持新增、复制、移动和删除。
-- 配置请求 Header、Body、响应样例、字段映射和后处理参数。
-- 批量发送图片，查看原始响应、解析结果和检测框预览。
-- 保存预测可视化结果，并支持 GT 标注预览。
-- 调用 dsetkit 进行数据集转换、绘图和结果评估。
-- 自带一个默认测试 pipeline，便于第一次启动后快速验证系统是否正常。
+- 浏览后端机器上 `WEB_POST_FILESYSTEM_ROOT` 范围内的图片文件。
+- 从浏览器所在机器上传文件或文件夹到后端 `datasets` 目录。
+- 按 Collection 管理 Pipeline，支持新建、复制、移动、删除和分组。
+- 配置 Header JSON、Body JSON、Response 样例、响应解析和请求配置。
+- 单张或批量发送图片到算法接口。
+- 查看 Raw JSON 和 Parsed JSON。
+- 预览 Pred 或 GT 标注图片。
+- 下载生成的 Pred 或 GT 标注图片到本地目录。
+- 使用 dsetkit 转换 Pred 或 GT 标注格式，支持 LabelMe、VOC、YOLO。
+- 使用 `dsetkit.dataset` 查看 GT 数据集统计，并通过 `dsetkit.evaluator` 输出评估指标。
 
 ## 项目结构
 
 ```text
-post_web/
-  backend/                 后端代码、pipeline 核心逻辑、启动器和工具脚本
-  frontend/                前端源码和构建产物
-  data/                    pipeline 配置、分组、日志和运行结果
-  datasets/                开发环境默认数据集目录；发布包也会创建同名目录
-  scripts/                 发布和维护脚本
-  release/                 生成的发布包
-  dsetkit-0.4.0-py3-none-any.whl
+web-post/
+  backend/                         FastAPI 后端、Pipeline 核心逻辑、启动器和工具脚本
+  backend/wheels/                  本地 wheel 依赖，包含 dsetkit 0.4.0
+  frontend/                        Vue 3 前端源码
+  frontend/src/styles/             全局样式变量、通用组件样式和布局样式
+  data/templates/<group>/<pipeline>/ Pipeline 定义和 JSON 资产
+  data/.cache/<pipeline>/<bucket>/ 运行结果、预览图和转换结果缓存
+  scripts/windows/                 分阶段 Windows 发布脚本
+  scripts/macos/                   macOS 打包脚本；目前不在主发布路径中
+  release/                         生成的发布包
   docker-compose.yml
+  pyproject.toml
+  uv.lock
 ```
 
-Windows 便携版发布后的目录结构：
+Pipeline 分组直接来自 `data/templates` 下的文件夹。`Ungrouped` 和 `Deleted` 是特殊必要分组，不存在时会自动创建。每个 Pipeline 的文件夹名就是 `pipeline_name`，页面显示用的 `displayName` 保存在 `pipeline.json` 中，两者都必须全局唯一。
+
+## 模板隐私和复用
+
+开源仓库和便携版发布包默认只包含 `data/templates/Ungrouped/demo_image_pipeline`。真实 Pipeline 模板通常会包含私有服务地址、请求头、请求体、响应样例、类别名称或客户相关解析规则，因此应当视为本地私有运行数据。
+
+复用其他用户或其他机器上的模板时：
+
+1. 把模板文件夹复制到 `data/templates/<分组>/<pipeline_name>/`。便携版则复制到 `release/windows/web-post/data/templates/<分组>/<pipeline_name>/`。
+2. 保持模板 JSON 文件在同一个文件夹内，通常包括 `pipeline.json`、`header.json`、`body.json`、`response.json`、`mapping.json` 和 `post_config.json`。
+3. 确认 `pipeline_name` 和 `displayName` 全局唯一。如有冲突，请先修改文件夹名和 `pipeline.json` 中对应字段。
+4. 分享模板前检查并清理私有 URL、token、cookie、内部请求头、样例请求体和响应数据。
+5. 复制后刷新页面；如果没有出现，重启后端让系统重新读取 `data/templates`。
+
+私有模板目录默认会被 git 忽略，只有 demo pipeline 应该进入版本管理。
+
+## 运行数据目录
+
+默认运行数据在 `data/` 下：
 
 ```text
-fuxing/
-  fuxing.exe
-  start.bat
-  fuxing.env
-  html/
-  data/
-  datasets/
+data/
+  templates/
+    Ungrouped/demo_image_pipeline/
+      pipeline.json
+      header.json
+      body.json
+      response.json
+      mapping.json
+      post_config.json
+  .cache/
+    <pipeline>/<bucket>/
+      post/
+        _summary.json
+        *.raw.json
+        *.parsed.json
+      pred/
+      GT/
+      labelme|voc|yolo/
+  logs/
 ```
 
-不要单独移动 `fuxing.exe`。请保持 `fuxing.exe`、`html`、`data`、`datasets` 在同一个 `fuxing` 文件夹里。
+缓存 bucket 由 Image Path 推导。比如输入 `/root/1/2/3` 或 `/root/1/2/3/file.jpg`，bucket 都是 `2_3`。
 
-## 发布包里的几个目录
+## 配置项
 
-- `html/`：前端页面文件，不需要手动修改。
-- `data/`：保存 pipeline、分组、日志和运行结果。
-- `datasets/`：上传按钮的固定目标目录，也就是后端机器接收数据的位置。
-
-文件浏览和上传的范围是故意分开的：
-
-- 文件浏览弹窗显示的是后端机器上可见的目录，根目录由 `FUXING_FILESYSTEM_ROOT` 控制。
-- Windows 便携版默认显示 `fuxing.exe` 所在磁盘，例如程序在 `D:\tools\fuxing`，默认根目录就是 `D:\`。
-- Linux/macOS 默认显示 `/`。
-- 上传按钮选择文件时，浏览器会让你从前端电脑上任意位置选择文件。
-- 上传目标固定是后端机器的 `FUXING_DATASETS_ROOT`，便携版默认是 `fuxing/datasets`。
-
-这样设计是为了支持“前端在 A 机器打开，后端在 B 机器运行”的情况：A 机器选择文件，文件会上传到 B 机器的 `datasets` 目录。
-
-## Windows 便携版使用方法
-
-1. 打开 `fuxing` 文件夹。
-2. 双击 `fuxing.exe` 或 `start.bat`。
-3. 等几秒钟，浏览器通常会自动打开。
-4. 如果浏览器没有自动打开，手动访问：`http://127.0.0.1:8000`。
-
-如果 8000 端口被占用，可以用命令行指定其他端口。
-
-打开 CMD 的方法：
-
-1. 打开 `fuxing` 文件夹。
-2. 点击资源管理器顶部地址栏。
-3. 输入 `cmd`。
-4. 按回车。
-5. 输入下面的命令：
-
-```bat
-fuxing.exe --port 8001
-```
-
-打开 PowerShell 的方法：
-
-1. 打开 `fuxing` 文件夹。
-2. 按住 `Shift`，在文件夹空白处右键。
-3. 点击“在终端中打开”或“在此处打开 PowerShell”。
-4. 输入下面的命令：
-
-```powershell
-.\fuxing.exe --port 8001
-```
-
-然后访问：`http://127.0.0.1:8001`。
-
-## 配置文件浏览根目录
-
-发布脚本支持在构建时指定文件浏览弹窗的根目录：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 -FileSystemRoot D:\works\datasets
-```
-
-也可以发布后编辑 `fuxing.env`，加入一行：
+本地开发时，`backend.main:app` 直接读取环境变量。`backend/launcher.py` 中的便携版启动器还会读取应用目录下的 `web-post.env`，并支持 `--host`、`--port`、`--filesystem-root`、`--no-browser`、`--reload` 等命令行参数。
 
 ```text
-FUXING_FILESYSTEM_ROOT=D:\works\datasets
+WEB_POST_FILESYSTEM_ROOT   文件浏览器显示的后端根目录
+WEB_POST_DATA_ROOT         运行数据目录，默认 data
+WEB_POST_DATASETS_ROOT     上传文件在后端机器上的目标目录
+WEB_POST_FRONTEND_DIST     后端启动器托管的前端构建目录
+WEB_POST_BASE_URL          Demo/mock Pipeline 使用的后端基础地址
+LOG_LEVEL                  后端日志级别，默认 INFO
+LOG_DIR                    日志目录，默认 WEB_POST_DATA_ROOT/logs
+LOG_ROTATION               Loguru 日志轮转配置，默认 10 MB
+LOG_RETENTION              Loguru 日志保留配置，默认 14 days
 ```
 
-或者启动时临时指定：
+文件浏览和上传范围是分开的：
+
+- `Browse` 看到的是后端机器上的目录，根目录由 `WEB_POST_FILESYSTEM_ROOT` 控制。
+- 上传文件时，浏览器从前端用户的机器选择文件。
+- 上传目标固定写入后端机器的 `WEB_POST_DATASETS_ROOT`。
+
+## Python 依赖管理
+
+Python 依赖由 uv 管理，项目要求 Python `>=3.12,<3.14`。
 
 ```powershell
-.\fuxing.exe --filesystem-root D:\works\datasets
+uv sync
 ```
 
-## Windows 发布命令
-
-在项目根目录执行：
+发布打包依赖，例如 PyInstaller，放在 `release` dependency group 中：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 -Python .\.venv\Scripts\python.exe
+uv sync --group release
 ```
 
-这个脚本会一键完成发布流程：
+`dsetkit==0.4.0` 来自本地 wheel：
 
-1. 安装后端依赖和打包依赖。
-2. 构建前端，生成 `frontend/dist`。
-3. 使用 PyInstaller 构建后端可执行程序。
-4. 创建发布包里的 `data/` 和 `datasets/`。
-5. 把 `data/groups.json` 和默认 demo pipeline 复制到发布包的 `data/`。
-6. 把前端构建产物复制到发布包的 `html/`。
-
-如果 `.venv` 是用 uv 创建的，环境里可能默认没有 `pip`。脚本会优先使用 `uv pip install --python <python.exe>` 安装依赖，因此推荐明确传入当前虚拟环境的 Python：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 -Python .\.venv\Scripts\python.exe
+```text
+backend/wheels/dsetkit-0.4.0-py3-none-any.whl
 ```
 
-常用参数：
+## Docker 使用方式
 
-- `-Python <路径>`：指定用于打包的 Python。
-- `-NoFrontendBuild`：复用已有的 `frontend/dist`，不重新构建前端。
-- `-SkipInstall`：跳过 Python 依赖安装。
-- `-OneFile`：生成单文件 exe。
-- `-OneDir`：显式使用 PyInstaller onedir 模式；当前脚本默认就是 onedir。
-- `-FileSystemRoot <路径>`：设置文件浏览弹窗的根目录。
-
-默认 onedir 发布包里会有 `_internal/` 目录。不要删除它，它里面是 `fuxing.exe` 运行时需要的 PyInstaller 依赖文件。
-
-## macOS 发布命令
-
-macOS 包必须在 macOS 上构建：
-
-```bash
-scripts/macos/build_portable.sh
-```
-
-指定文件浏览根目录：
-
-```bash
-scripts/macos/build_portable.sh --filesystem-root /Users/you/datasets
-```
-
-## Docker 开发方式
+启动或重新构建：
 
 ```powershell
 docker compose up -d --build
 ```
+
+Compose 使用 `.env` / `.env.example` 配置宿主侧变量，例如 `WEB_POST_DATA_DIR`、`LOG_LEVEL`、`LOG_ROTATION` 和 `LOG_RETENTION`。后端应用变量也可以写在 `docker-compose.yml` 或本地 `docker-compose.override.yml` 中。
 
 默认地址：
 
 - 前端：`http://localhost:5173`
 - 后端：`http://localhost:8000`
 
+常用检查：
+
+```powershell
+docker ps
+docker exec webui-backend python -c "import backend.main, dsetkit, cv2, natsort; print('ok')"
+```
+
 ## 本地开发方式
 
 后端：
 
-```bash
-python -m pip install -r backend/requirements.txt
-python -m pip install dsetkit-0.4.0-py3-none-any.whl
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```powershell
+uv sync
+$env:WEB_POST_DATA_ROOT = ".\data"
+$env:WEB_POST_FILESYSTEM_ROOT = "D:\"
+$env:WEB_POST_DATASETS_ROOT = ".\datasets"
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 前端：
 
-```bash
+```powershell
 cd frontend
 npm install
 npm run dev
@@ -190,30 +163,57 @@ npm run dev
 
 构建前端：
 
-```bash
+```powershell
 cd frontend
 npm run build
 ```
 
-## 默认测试 Pipeline
+如需用后端 launcher 测试已构建前端：
 
-默认会带一个 Collection 位于 `Ungrouped` 的 `Demo Image Pipeline`。它调用后端内置的 mock 检测接口：
-
-```text
-/api/mock/detection
+```powershell
+.\.venv\Scripts\python.exe -m backend.launcher --no-browser --reload
 ```
 
-这个 pipeline 可以接收图片，返回一个模拟检测框。第一次启动后，可以先选择一张图片运行它，用来确认文件浏览、请求构造、响应解析和可视化是否都正常。
+## Windows 便携版发布
 
-## 前端结果页签
+主发布入口是：
 
-运行 Pipeline 后，`响应展示` 区域包含以下页签：
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\release.ps1
+```
 
-- `原始响应`：显示算法接口返回的原始 JSON。
-- `解析结果`：显示经过响应映射后的标准检测结果。
-- `图片预览`：在图片上查看预测框或 GT 标注框。
-- `标注转换`：查看用于标注转换的数据。
-- `结果评估`：调用 `dsetkit.evaluator` 对预测结果和真实标注进行评估。
+`release.ps1` 每次都会先运行 `uv sync --group release`，然后使用同步后的 `.venv\Scripts\python.exe` 构建发布包。
 
-如果重新发布后浏览器里仍然看到旧页面，先确认访问的是当前启动程序的地址，例如 `http://127.0.0.1:8000`，然后按 `Ctrl+F5` 强制刷新浏览器缓存。
+常用参数：
 
+- `-ProjectName <名称>`：指定发布后的文件夹和 exe 名称，默认 `web-post`。
+- `-NoFrontendBuild`：复用已有 `frontend/dist`。
+- `-OneDir`：PyInstaller onedir 模式，默认模式。
+- `-OneFile`：生成单文件 exe。
+- `-FileSystemRoot <路径>`：写入发布包中的默认文件浏览根目录。
+
+发布包结构：
+
+```text
+release/windows/web-post/
+  web-post.exe
+  start.bat
+  web-post.env
+  html/
+  data/
+  datasets/
+```
+
+不要单独移动 `web-post.exe`。请保持 `web-post.exe`、`html`、`data`、`datasets` 在同一个 `web-post` 文件夹里。onedir 模式下也不要删除 `_internal/`。
+
+## 默认测试 Pipeline
+
+`data/templates/Ungrouped/demo_image_pipeline` 用于首次运行测试。它调用后端内置 mock 检测接口，返回一个模拟检测框。第一次启动后建议先用它验证图片浏览、base64 注入、Raw/Parsed、Pred 预览和缓存输出，再连接真实算法服务。
+
+## 常见问题
+
+- Raw/Parsed 为空：先确认右侧图片状态是 `success`，再检查 Parsing 路径。
+- 图片预览没有框：检查 Parsed 是否有 bbox，坐标格式是否正确。
+- 找不到本机文件：`Browse` 是后端文件系统，不是浏览器电脑文件系统，需要先上传到后端 datasets 目录，或调整 `WEB_POST_FILESYSTEM_ROOT`。
+- 页面还是旧版本：容器模式下重建并重启前端容器；便携版按 `Ctrl+F5` 强制刷新。
+- 复制的模板没有出现：检查目录结构是否为 `data/templates/<分组>/<pipeline_name>/`，必要时重启后端。

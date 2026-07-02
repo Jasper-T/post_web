@@ -31,7 +31,7 @@
         <div class="meta-input-save-wrap request-url-save-wrap">
           <input v-model.trim="editor.url" class="request-url-input" placeholder="Input API URL" />
           <button
-            class="small-button request-url-action-button"
+            class="request-url-action-button ui-btn"
             type="button"
             :disabled="savingPipeline"
             title="Create a blank pipeline in Ungrouped"
@@ -41,7 +41,7 @@
             new
           </button>
           <button
-            class="small-button request-url-action-button"
+            class="request-url-action-button ui-btn"
             type="button"
             :disabled="savingPipeline || !editor.name"
             title="Clone current pipeline in its group"
@@ -51,7 +51,7 @@
             clone
           </button>
           <button
-            class="small-button icon-button meta-save-button"
+            class="ui-icon-save meta-save-button ui-btn ui-icon-btn"
             type="button"
             :disabled="savingPipeline"
             title="Save pipeline URL"
@@ -72,7 +72,7 @@
           <div class="meta-input-save-wrap">
             <input v-model.trim="editor.name" placeholder="demo_detection_v2" />
             <button
-              class="small-button icon-button meta-save-button"
+              class="ui-icon-save meta-save-button ui-btn ui-icon-btn"
               type="button"
               :disabled="savingPipeline"
               title="Save pipeline name"
@@ -91,7 +91,7 @@
           <div class="meta-input-save-wrap">
             <input v-model.trim="editor.displayName" placeholder="Demo Detection V2" />
             <button
-              class="small-button icon-button meta-save-button"
+              class="ui-icon-save meta-save-button ui-btn ui-icon-btn"
               type="button"
               :disabled="savingPipeline"
               title="Save display name"
@@ -111,11 +111,11 @@
             <div class="meta-input-save-wrap">
               <input v-model="editor.inputPath" placeholder="Select image or directory" @change="loadResponseQueue(editor.inputPath)" />
               <button
-                class="small-button icon-button meta-save-button"
+                class="ui-icon-save meta-save-button ui-btn ui-icon-btn"
                 type="button"
                 :disabled="queueLoading || !editor.inputPath"
-                title="读取图片列表"
-                aria-label="读取图片列表"
+                title="Load image list"
+                aria-label="Load image list"
                 @click="loadResponseQueue(editor.inputPath)"
               >
                 <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -124,7 +124,7 @@
                 </svg>
               </button>
             </div>
-            <button class="small-button" type="button" @click="openFileBrowser">Browse</button>
+            <button class="ui-btn" type="button" @click="openFileBrowser">Browse</button>
           </div>
         </label>
       </div>
@@ -139,7 +139,7 @@
             :aria-selected="activeWorkspaceView === 'request'"
             @click="activeWorkspaceView = 'request'"
           >
-            请求解析
+            Request
           </button>
           <button
             class="workspace-view-button"
@@ -149,7 +149,7 @@
             :aria-selected="activeWorkspaceView === 'response'"
             @click="activeWorkspaceView = 'response'"
           >
-            响应展示
+            Response
           </button>
         </div>
 
@@ -245,29 +245,32 @@
 
               <div class="response-body">
                 <div v-if="runError" class="tool-alert error">{{ runError }}</div>
-                <template v-if="activeResponseTab === 'raw-response'">
-                  <div v-if="selectedResult?.rawResponse" class="result-json-block">
-                    <pre>{{ stringify(selectedResult.rawResponse) }}</pre>
+                <template v-if="activeResponseTab === 'response-result'">
+                  <div class="response-result-panel">
+                    <div class="response-result-toolbar">
+                      <div class="preview-mode-switch ui-segmented" role="group" aria-label="Response result view">
+                        <button type="button" :class="{ active: responseResultView === 'parsed' }" @click="responseResultView = 'parsed'">Parsed</button>
+                        <button type="button" :class="{ active: responseResultView === 'raw' }" @click="responseResultView = 'raw'">Raw</button>
+                      </div>
+                    </div>
+                    <div v-if="responseResultView === 'raw' && hasResponseValue(selectedResult, 'rawResponse')" class="result-json-block">
+                      <pre>{{ stringify(selectedResult.rawResponse) }}</pre>
+                    </div>
+                    <div v-else-if="responseResultView === 'parsed' && hasResponseValue(selectedResult, 'parsed')" class="result-json-block">
+                      <pre>{{ stringify(normalizedParsedResult) }}</pre>
+                    </div>
+                    <div v-else-if="selectedResult?.error" class="tool-alert error">{{ selectedResult.error }}</div>
+                    <div v-else class="empty-state compact-empty-state">Select an image with a completed result.</div>
                   </div>
-                  <div v-else-if="selectedResult?.error" class="tool-alert error">{{ selectedResult.error }}</div>
-                  <div v-else class="empty-state compact-empty-state">Select an image with a completed result.</div>
-                </template>
-
-                <template v-else-if="activeResponseTab === 'parsed-result'">
-                  <div v-if="selectedResult?.parsed" class="result-json-block">
-                    <pre>{{ stringify(normalizedParsedResult) }}</pre>
-                  </div>
-                  <div v-else-if="selectedResult?.error" class="tool-alert error">{{ selectedResult.error }}</div>
-                  <div v-else class="empty-state compact-empty-state">Select an image with a completed result.</div>
                 </template>
 
                 <template v-else-if="activeResponseTab === 'image-preview'">
                   <div v-if="selectedImagePath" class="response-image-preview">
                     <div class="response-image-preview-header">
-                      <strong :title="selectedImagePath">{{ baseName(selectedImagePath) }}</strong>
+                      <div class="preview-title-block"><strong :title="selectedImagePath">{{ baseName(selectedImagePath) }}</strong><small v-if="previewMode === 'gt' && selectedResult?.gtError">{{ selectedResult.gtError }}</small></div>
                       <div class="preview-toolbar-actions">
                         <button
-                          class="small-button icon-button preview-refresh-button"
+                          class="ui-action-refresh ui-icon-refresh preview-refresh-button ui-btn ui-icon-btn"
                           :class="{ refreshing: isRefreshingCurrentVisualization }"
                           type="button"
                           :title="previewMode === 'pred' ? 'Refresh Pred annotations' : 'Refresh GT annotations'"
@@ -280,7 +283,7 @@
                           </svg>
                         </button>
                         <button
-                          class="small-button icon-button preview-download-button"
+                          class="ui-icon-download preview-download-button ui-btn ui-icon-btn"
                           type="button"
                           title="Download annotation folder"
                           aria-label="Download annotation folder"
@@ -293,7 +296,7 @@
                             <path d="M5 21h14" />
                           </svg>
                         </button>
-                        <div class="preview-mode-switch" role="group" aria-label="Pred GT view">
+                        <div class="preview-mode-switch ui-segmented" role="group" aria-label="Pred GT view">
                           <button type="button" :class="{ active: previewMode === 'pred' }" @click="previewMode = 'pred'">Pred</button>
                           <button type="button" :class="{ active: previewMode === 'gt' }" @click="previewMode = 'gt'">GT</button>
                         </div>
@@ -309,12 +312,11 @@
                       @keydown.left.prevent="selectPreviewByOffset(-1)"
                       @keydown.right.prevent="selectPreviewByOffset(1)"
                     >
-                      <div v-if="(gtGenerating || gtRefreshing) && previewMode === 'gt'" class="preview-status-message">正在生成 GT 标注图...</div>
+                      <div v-if="(gtGenerating || gtRefreshing) && previewMode === 'gt'" class="preview-status-message">Generating GT annotation preview...</div>
                       <template v-else-if="currentPreviewPath">
                         <img :src="imageContentUrl(currentPreviewPath)" :alt="baseName(selectedImagePath)" />
-                        <div v-if="previewMode === 'gt' && selectedResult?.gtError" class="preview-warning-message">{{ selectedResult.gtError }}</div>
                       </template>
-                      <div v-else class="preview-status-message">当前图片不可用。</div>
+                      <div v-else class="preview-status-message">Current image is not available.</div>
                     </div>
                   </div>
                   <div v-else class="empty-state compact-empty-state">Select an image to preview.</div>
@@ -330,7 +332,7 @@
                         <span>IoU</span>
                         <input v-model.number="evaluationIouThreshold" type="number" min="0" max="1" step="0.01" />
                       </label>
-                      <button class="small-button primary-button" type="button" :disabled="!evaluationCanRun || evaluationRunning" @click="runResultEvaluation">
+                      <button class="ui-btn ui-btn-primary" type="button" :disabled="!evaluationCanRun || evaluationRunning" @click="runResultEvaluation">
                         {{ evaluationRunning ? 'Evaluating...' : 'Run Evaluation' }}
                       </button>
                     </div>
@@ -343,16 +345,28 @@
                     <div class="names-summary-panel">
                       <strong>Names</strong>
                       <span>{{ namesSummary }}</span>
-                      <button class="small-button" type="button" @click="openGTSettingsDialog">Edit in Settings</button>
+                      <button class="ui-btn" type="button" @click="openGTSettingsDialog">Settings</button>
                     </div>
 
                     <div v-if="evaluationError" class="tool-alert error">{{ evaluationError }}</div>
                     <div v-else-if="!evaluationCanRun" class="empty-state compact-empty-state">Run images first, then set GT label folder and names in Settings.</div>
 
+                    <section class="evaluation-section">
+                      <div class="evaluation-section-title">
+                        <strong>Predictions</strong>
+                        <span>parsed response, realtime</span>
+                      </div>
+                      <div class="evaluation-metrics-grid">
+                        <div class="evaluation-metric"><span>Images</span><strong>{{ predictionStats.images }}</strong></div>
+                        <div class="evaluation-metric"><span>Instances</span><strong>{{ predictionStats.instances }}</strong></div>
+                        <div class="evaluation-metric"><span>Names</span><strong>{{ gtNames.length }}</strong></div>
+                      </div>
+                    </section>
+
                     <template v-if="evaluationResult?.metrics">
                       <section class="evaluation-section">
                         <div class="evaluation-section-title">
-                          <strong>Ground Truth Dataset</strong>
+                          <strong>Ground Truth</strong>
                           <span>dsetkit.dataset</span>
                         </div>
                         <div class="evaluation-metrics-grid">
@@ -377,7 +391,7 @@
                           <div class="evaluation-metric"><span>{{ evaluationApKey }}</span><strong>{{ formatMetric(evaluationResult.metrics[evaluationApKey] ?? evaluationResult.metrics.mAP) }}</strong></div>
                         </div>
 
-                        <div class="evaluation-table-shell">
+                        <div class="evaluation-table-shell ui-table">
                           <table class="evaluation-table">
                             <thead>
                               <tr>
@@ -417,7 +431,7 @@
                 <template v-else-if="activeResponseTab === 'annotation-conversion'">
                   <div class="annotation-conversion-panel">
                     <div class="conversion-toolbar">
-                      <div class="preview-mode-switch" role="group" aria-label="Annotation conversion source">
+                      <div class="preview-mode-switch ui-segmented" role="group" aria-label="Annotation conversion source">
                         <button type="button" :class="{ active: conversionMode === 'pred' }" @click="conversionMode = 'pred'">Pred</button>
                         <button type="button" :class="{ active: conversionMode === 'gt' }" @click="conversionMode = 'gt'">GT</button>
                       </div>
@@ -429,7 +443,7 @@
                           <option value="yolo">YOLO</option>
                         </select>
                       </label>
-                      <button class="small-button primary-button" type="button" :disabled="!conversionCanRun || conversionRunning" @click="runAnnotationConversion">
+                      <button class="ui-btn ui-btn-primary" type="button" :disabled="!conversionCanRun || conversionRunning" @click="runAnnotationConversion">
                         {{ conversionRunning ? 'Converting...' : 'Convert' }}
                       </button>
                     </div>
@@ -437,13 +451,12 @@
                     <div class="names-summary-panel">
                       <strong>Names</strong>
                       <span>{{ namesSummary }}</span>
-                      <button class="small-button" type="button" @click="openGTSettingsDialog">Edit in Settings</button>
+                      <button class="ui-btn" type="button" @click="openGTSettingsDialog">Settings</button>
                     </div>
-
-                    <label class="tool-field conversion-output-field">
-                      <span>Output Folder</span>
-                      <input v-model.trim="conversionOutDir" type="text" placeholder="Leave empty to use data/conversions/pred or GT label parent" />
-                    </label>
+                    <div class="names-summary-panel">
+                      <strong>New Annos</strong>
+                      <span>{{ currentConversionCachePath }}</span>
+                    </div>
 
                     <div class="response-queue-summary evaluation-summary-line">
                       <span v-if="conversionMode === 'pred'">{{ conversionPredictions.length }} Pred images will be converted</span>
@@ -454,7 +467,7 @@
                     <div v-if="conversionError" class="tool-alert error">{{ conversionError }}</div>
                     <div v-if="conversionResult" class="tool-alert success">
                       <strong>{{ conversionResult.message }}</strong>
-                      <span v-if="conversionResult.outputDir">Output: {{ conversionResult.outputDir }}</span>
+                      <span v-if="conversionResult.outputDir">New Annos{{ conversionResult.outputDir }}</span>
                     </div>
                     <div v-else-if="!conversionCanRun" class="empty-state compact-empty-state">Set names in Settings, then choose Pred results or a GT label folder to convert.</div>
 
@@ -476,20 +489,20 @@
 
             <aside class="response-queue-panel">
               <div class="response-queue-toolbar">
-                <label class="response-select-all" title="选择当前筛选视图中的全部图片">
+                <label class="response-select-all" title="Select all images in the current filtered view">
                   <input
                     :key="`select-all-${responseStatusFilter}`"
                     type="checkbox"
-                    aria-label="选择当前视图全部图片"
+                    aria-label="Select all images in the current view"
                     :checked="filteredSelectAllChecked"
                     :indeterminate="filteredSelectAllIndeterminate"
                     :disabled="!filteredResponseQueue.length"
                     @change="toggleFilteredSelection($event.target.checked)"
                   />
-                  <span>全选当前视图</span>
+                  <span>Select all</span>
                 </label>
                 <button
-                  class="small-button icon-button response-settings-button"
+                  class="ui-icon-settings response-settings-button ui-btn ui-icon-btn"
                   type="button"
                   title="Preview settings"
                   aria-label="Preview settings"
@@ -507,7 +520,7 @@
                   <option value="failed">Failed</option>
                 </select>
                 <button
-                  class="send-button response-send-all"
+                  class="response-send-all ui-btn ui-btn-primary"
                   type="button"
                   :disabled="runningAll || !editor.name || !editor.inputPath || !selectedResponseCount"
                   @click="runAllImages"
@@ -518,7 +531,7 @@
 
               <div class="response-queue-summary">
                 <span>{{ filteredResponseQueue.length }} / {{ responseQueue.length }} images</span>
-                <span>new {{ responseStatusCounts.new }} · success {{ responseStatusCounts.success }} · failed {{ responseStatusCounts.failed }}</span>
+                <span>new {{ responseStatusCounts.new }} / success {{ responseStatusCounts.success }} / failed {{ responseStatusCounts.failed }}</span>
               </div>
 
               <div v-if="queueLoading" class="empty-state compact-empty-state">Loading images...</div>
@@ -527,7 +540,7 @@
                 <div
                   v-for="item in filteredResponseQueue"
                   :key="item.imagePath"
-                  class="response-list-item"
+                  class="response-list-item ui-list-item"
                   :data-response-image-path="item.imagePath"
                   :class="[item.status, { active: selectedImagePath === item.imagePath }]"
                   role="button"
@@ -547,7 +560,7 @@
                     <span class="response-status-badge">{{ item.status }}</span>
                   </div>
                   <div class="response-list-item-meta">
-                    <small>{{ item.elapsedMs == null ? "-" : item.elapsedMs + " ms" }}</small>
+                    <small>{{ item.elapsedMs == null ? "-" : item.elapsedMs + " ms" }}</small><small v-if="item.gtError" class="response-row-warning">{{ item.gtError }}</small>
                     <button
                       class="response-item-send"
                       type="button"
@@ -573,10 +586,10 @@
       <div v-else class="empty-pipeline-page">
         <div class="empty-pipeline-card">
           <p class="eyebrow">Pipeline</p>
-          <h2>请选择或新建一个 pipeline</h2>
-          <p>可以从左侧 Collections 选择已有 pipeline，或新建一个空白 pipeline。</p>
+          <h2>Welcome !</h2>
+          <p>Choose pipeline in Collections</p>
           <button
-            class="small-button primary-button"
+            class="ui-btn ui-btn-primary"
             type="button"
             :disabled="savingPipeline"
             @click="createAndSaveNewPipeline"
@@ -595,7 +608,7 @@
           :highlight-path="uploadSelectionPath"
           :title="`Data Root (${appConfig.filesystemRoot})`"
           eyebrow="File System"
-          loading-message="加载中..."
+          loading-message="Loading..."
           :filter-loader="fetchFilteredChildren"
           show-upload-button
           :upload-target-path="appConfig.datasetsRoot"
@@ -608,7 +621,7 @@
         >
           <template #header-actions>
             <button
-              class="small-button icon-button file-browser-close-button"
+              class="ui-action-close ui-icon-close file-browser-close-button ui-btn ui-icon-btn"
               type="button"
               title="Close"
               aria-label="Close"
@@ -629,8 +642,8 @@
           :root-node="resultsRootNode"
           :selected-path="resultsBrowser.selectedPath"
           eyebrow=""
-          title="运行结果"
-          loading-message="加载中..."
+          title="Run Results"
+          loading-message="Loading..."
           :filter-loader="fetchFilteredChildren"
           @refresh="reloadResultsRoot"
           @select="selectResultsPath"
@@ -638,22 +651,22 @@
           @load-more="loadMoreChildren"
         >
           <template #header-actions>
-            <button class="small-button icon-button file-browser-close-button" type="button" title="Close" aria-label="Close results browser" @click="closeResultsBrowser"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+            <button class="ui-action-close ui-icon-close file-browser-close-button ui-btn ui-icon-btn" type="button" title="Close" aria-label="Close results browser" @click="closeResultsBrowser"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
           </template>
         </FileSystemTree>
 
         <div class="file-browser-dialog-footer">
           <div class="file-browser-path-preview">
-            <span>已选择</span>
-            <strong>{{ resultsBrowser.selectedPath || "未选择" }}</strong>
+            <span>Selected</span>
+            <strong>{{ resultsBrowser.selectedPath || "Not selected" }}</strong>
           </div>
           <button
-            class="small-button primary-button"
+            class="ui-btn ui-btn-primary"
             type="button"
             :disabled="!resultsBrowser.selectedPath"
             @click="loadSelectedResultsFolder"
           >
-            加载
+            Load
           </button>
         </div>
       </div>
@@ -666,7 +679,7 @@
           :selected-path="gtBrowser.selectedPath"
           :title="`Data Root (${appConfig.filesystemRoot})`"
           eyebrow="GT Labels"
-          loading-message="加载中..."
+          loading-message="Loading..."
           :filter-loader="fetchFilteredChildren"
           @refresh="reloadGTRoot"
           @select="selectGTLabelFolder"
@@ -675,27 +688,48 @@
           @load-more="loadMoreChildren"
         >
           <template #header-actions>
-            <button class="small-button icon-button file-browser-close-button" type="button" title="Close" aria-label="Close GT browser" @click="closeGTBrowser"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+            <button class="ui-action-close ui-icon-close file-browser-close-button ui-btn ui-icon-btn" type="button" title="Close" aria-label="Close GT browser" @click="closeGTBrowser"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
           </template>
         </FileSystemTree>
         <div class="file-browser-dialog-footer">
-          <div class="file-browser-path-preview"><span>双击文件夹确认</span><strong>{{ gtBrowser.selectedPath || '未选择' }}</strong></div>
+          <div class="file-browser-path-preview"><span>Double-click a folder to confirm</span><strong>{{ gtBrowser.selectedPath || 'Not selected' }}</strong></div>
         </div>
       </div>
     </div>
 <div v-if="gtSettingsDialog.visible" class="json-import-backdrop" @click.self="closeGTSettingsDialog">
       <div class="json-import-dialog gt-settings-dialog">
         <div class="json-import-dialog-header">
-          <h4>Preview Settings</h4>
-          <button class="small-button icon-button" type="button" title="Close" aria-label="Close GT settings" @click="closeGTSettingsDialog"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+          <h4>Settings</h4>
+          <button class="ui-action-close ui-icon-close ui-btn ui-icon-btn" type="button" title="Close" aria-label="Close GT settings" @click="closeGTSettingsDialog"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
         <div class="gt-settings-body">
-          <section class="gt-settings-section">
+          <section class="gt-settings-section cache-settings-section">
             <div class="gt-settings-section-header">
-              <strong>Results</strong>
-              <span>Load a saved run result folder into the current queue.</span>
+              <strong>Cache dir</strong>
+              <span>{{ currentCachePath }}</span>
             </div>
-            <button class="small-button" type="button" :disabled="!editor.name" @click="openResultsBrowser">Load Results</button>
+          </section>
+          <section class="cache-list-section">
+            <div class="cache-list-header">
+              <strong>Cache Folders</strong>
+              <button class="ui-action-refresh ui-icon-refresh ui-btn ui-icon-btn" type="button" :disabled="!editor.name || cacheLoading" title="Refresh" aria-label="Refresh cache" @click="loadPipelineCache"></button>
+            </div>
+            <div v-if="cacheError" class="tool-alert error">{{ cacheError }}</div>
+            <div class="cache-folder-list">
+              <label v-for="item in cacheItems" :key="item.name" class="cache-folder-row ui-list-item">
+                <input type="checkbox" :checked="selectedCacheBuckets.includes(item.name)" @change="toggleCacheBucket(item.name, $event.target.checked)" />
+                <span :title="item.path">{{ item.name }}</span>
+                <small>{{ (item.children || []).join(', ') || '-' }}</small>
+              </label>
+              <div v-if="!cacheLoading && !cacheItems.length" class="empty-state compact-empty-state">No cache folders.</div>
+              <div v-if="cacheLoading" class="empty-state compact-empty-state">Loading cache...</div>
+            </div>
+            <div class="cache-list-actions">
+              <label class="cache-select-all"><input type="checkbox" :checked="cacheAllSelected" :disabled="!cacheItems.length" @change="toggleAllCacheBuckets($event.target.checked)" /> Select all</label>
+              <button class="ui-action-delete ui-action-delete-all ui-icon-delete cache-delete-button ui-btn ui-btn-danger" type="button" :disabled="!selectedCacheBuckets.length" @click="deleteSelectedCacheBuckets">
+                <span class="ui-action-label">Delete All</span>
+              </button>
+            </div>
           </section>
           <label class="tool-field">
             <span>Format</span>
@@ -709,7 +743,7 @@
             <span>Label Folder</span>
             <div class="gt-settings-folder-row">
               <input v-model="gtSettingsDraft.labelDir" type="text" placeholder="Select label folder" readonly />
-              <button class="small-button" type="button" @click="openGTBrowser">Browse</button>
+              <button class="ui-btn" type="button" @click="openGTBrowser">Browse</button>
             </div>
           </label>
           <label class="tool-field">
@@ -718,8 +752,8 @@
           </label>
         </div>
         <div class="json-import-dialog-footer">
-          <button class="small-button" type="button" @click="closeGTSettingsDialog">Cancel</button>
-          <button class="small-button primary-button" type="button" :disabled="gtGenerating || gtRefreshing" @click="applyGTSettings">Apply</button>
+          <button class="ui-btn" type="button" @click="closeGTSettingsDialog">Cancel</button>
+          <button class="ui-btn ui-btn-primary" type="button" :disabled="gtGenerating || gtRefreshing" @click="applyGTSettings">Apply</button>
         </div>
       </div>
     </div>
@@ -729,9 +763,9 @@
         <FileSystemTree
           :root-node="rootNode"
           :selected-path="assetReader.selectedPath"
-          :title="`Read ${assetReader.kind === 'mapping' ? '响应映射' : '请求配置'} JSON`"
+          :title="`Read ${assetReader.kind === 'mapping' ? 'Parsing' : 'Request Config'} JSON`"
           eyebrow="Project Root"
-          loading-message="加载中..."
+          loading-message="Loading..."
           :filter-loader="fetchJsonOnlyChildren"
           @refresh="reloadRoot"
           @select="selectAssetPath"
@@ -739,7 +773,7 @@
           @load-more="loadMoreChildren"
         >
           <template #header-actions>
-            <button class="small-button icon-button file-browser-close-button" type="button" title="Close" aria-label="Close asset reader" @click="closeAssetReader"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+            <button class="ui-action-close ui-icon-close file-browser-close-button ui-btn ui-icon-btn" type="button" title="Close" aria-label="Close asset reader" @click="closeAssetReader"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
           </template>
         </FileSystemTree>
 
@@ -748,7 +782,7 @@
             <span>Selected</span>
             <strong>{{ assetReader.selectedPath || "None" }}</strong>
           </div>
-          <button class="small-button primary-button" type="button" :disabled="!assetReader.selectedPath" @click="readSelectedAsset">
+          <button class="ui-btn ui-btn-primary" type="button" :disabled="!assetReader.selectedPath" @click="readSelectedAsset">
             Load
           </button>
         </div>
@@ -773,20 +807,20 @@ const baseRequestTabs = [
   { id: "header", label: "Header" },
   { id: "body", label: "Body" },
   { id: "response", label: "Response" },
-  { id: "mapping", label: "响应映射" },
-  { id: "post-config", label: "请求配置" },
+  { id: "mapping", label: "Parsing" },
+  { id: "post-config", label: "Request Config" },
 ];
 
 const responseTabs = [
-  { id: "raw-response", label: "\u539f\u59cb\u54cd\u5e94" },
-  { id: "parsed-result", label: "\u89e3\u6790\u7ed3\u679c" },
-  { id: "image-preview", label: "\u56fe\u7247\u9884\u89c8" },
-  { id: "result-evaluation", label: "\u7ed3\u679c\u8bc4\u4f30" },
-  { id: "annotation-conversion", label: "\u6807\u6ce8\u8f6c\u6362" },
+  { id: "response-result", label: "Response Result" },
+  { id: "image-preview", label: "Image Preview" },
+  { id: "result-evaluation", label: "Result Evaluation" },
+  { id: "annotation-conversion", label: "Annotation Conversion" },
 ];
 
 const activeRequestTab = ref("header");
-const activeResponseTab = ref("raw-response");
+const activeResponseTab = ref("response-result");
+const responseResultView = ref("parsed");
 const previewMode = ref("pred");
 const gtFormat = ref("yolo");
 const gtLabelDir = ref("");
@@ -806,6 +840,10 @@ const conversionOutDir = ref("");
 const conversionRunning = ref(false);
 const conversionError = ref("");
 const conversionResult = ref(null);
+const cacheItems = ref([]);
+const selectedCacheBuckets = ref([]);
+const cacheLoading = ref(false);
+const cacheError = ref("");
 const evaluationConfThreshold = ref(0.5);
 const evaluationIouThreshold = ref(0.5);
 const visualizationDownloading = ref(false);
@@ -904,9 +942,9 @@ const canRefreshCurrentVisualization = computed(() => {
 });
 
 const gtPreviewMessage = computed(() => {
-  if (!gtNames.value.length) return "请先填写 GT 类别名称。";
-  if (!gtLabelDir.value) return "请选择 GT 标注文件夹。";
-  return selectedResult.value?.gtError || "当前图片没有匹配的 GT 标注。";
+  if (!gtNames.value.length) return "Please configure GT names first.";
+  if (!gtLabelDir.value) return "Please select a GT label folder.";
+  return selectedResult.value?.gtError || "No matching GT annotation found for this image.";
 });
 
 const filteredResponseQueue = computed(() =>
@@ -931,10 +969,10 @@ const selectedSuccessfulPredictions = computed(() => {
 const conversionPredictions = computed(() => selectedSuccessfulPredictions.value);
 
 const namesSummary = computed(() => {
-  if (!gtNames.value.length) return "No names configured. Use Settings next to the image list checkbox.";
+  if (!gtNames.value.length) return "No names configured. ";
   const visible = gtNames.value.slice(0, 8).join(", ");
   const suffix = gtNames.value.length > 8 ? " +" + String(gtNames.value.length - 8) + " more" : "";
-  return String(gtNames.value.length) + ": " + visible + suffix + ". Edit in Settings next to the image list checkbox.";
+  return String(gtNames.value.length) + ": " + visible + suffix + ".";
 });
 
 const conversionCanRun = computed(() => {
@@ -942,6 +980,25 @@ const conversionCanRun = computed(() => {
   if (conversionMode.value === "pred") return conversionPredictions.value.length > 0;
   return Boolean(evaluationImageDir.value && gtLabelDir.value && gtFormat.value);
 });
+
+const currentPipelineCacheName = computed(() => String(editor.name || persistedPipelineName.value || "").trim());
+const currentCacheSourcePath = computed(() => selectedImagePath.value || editor.inputPath || "");
+const currentCacheBucket = computed(() => cacheBucketForPath(currentCacheSourcePath.value));
+const currentCachePath = computed(() => {
+  const pipeline = currentPipelineCacheName.value;
+  const bucket = currentCacheBucket.value;
+  if (pipeline && bucket) return "data/.cache/" + pipeline + "/" + bucket;
+  if (pipeline) return "data/.cache/" + pipeline + "/<select-image-or-input>";
+  return "data/.cache/<save-current-pipeline>/<select-image-or-input>";
+});
+const currentConversionCachePath = computed(() => currentCachePath.value + "/" + conversionTargetFormat.value);
+const predictionStats = computed(() => {
+  const predictions = evaluationPredictions.value;
+  const instances = predictions.reduce((total, item) => total + (Array.isArray(item.parsed) ? item.parsed.length : item.parsed ? 1 : 0), 0);
+  return { images: predictions.length, instances };
+});
+
+const cacheAllSelected = computed(() => cacheItems.value.length > 0 && selectedCacheBuckets.value.length === cacheItems.value.length);
 
 const evaluationCanRun = computed(() =>
   Boolean(evaluationPredictions.value.length && gtLabelDir.value && gtNames.value.length && editor.inputPath),
@@ -1072,6 +1129,13 @@ watch(jsonDependencyReady, (ready) => {
 
 watch(selectedImagePath, () => {
   scrollSelectedResponseIntoView();
+  refreshCurrentGTVisualizationIfVisible();
+});
+
+watch(previewMode, (mode) => {
+  if (mode === "gt") {
+    refreshCurrentGTVisualizationIfVisible();
+  }
 });
 
 function focusPreviewNavigation() {
@@ -1469,6 +1533,22 @@ function ensureUploadedPathVisible(directoryNode, uploadedPath) {
   });
 }
 
+function cacheBucketForPath(rawPath) {
+  const normalized = normalizeFilesystemPath(rawPath);
+  if (!normalized) return "";
+  const parts = normalized.split("/").filter(Boolean);
+  const lastPart = parts[parts.length - 1] || "cache";
+  const looksLikeFile = lastPart.includes(".");
+  const bucketParts = looksLikeFile ? parts.slice(0, -1) : parts;
+  const currentName = bucketParts[bucketParts.length - 1] || "cache";
+  const parentName = bucketParts[bucketParts.length - 2] || "";
+  return sanitizeCacheName((parentName ? parentName + "_" : "") + currentName);
+}
+
+function sanitizeCacheName(value) {
+  return String(value || "cache").replace(/[^a-zA-Z0-9_.-]+/g, "_").replace(/^[._-]+|[._-]+$/g, "") || "cache";
+}
+
 function normalizeFilesystemPath(path) {
   let normalized = String(path || "").split("\\").join("/");
   while (normalized.length > 1 && normalized.endsWith("/")) normalized = normalized.slice(0, -1);
@@ -1480,6 +1560,7 @@ function openGTSettingsDialog() {
   gtSettingsDraft.format = gtFormat.value;
   gtSettingsDraft.names = gtNames.value.join("\n");
   gtSettingsDialog.visible = true;
+  loadPipelineCache();
 }
 
 function closeGTSettingsDialog() {
@@ -1490,8 +1571,10 @@ async function applyGTSettings() {
   gtLabelDir.value = String(gtSettingsDraft.labelDir || "").trim();
   gtFormat.value = gtSettingsDraft.format || "yolo";
   gtNames.value = gtSettingsDraft.names.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+  responseQueue.value = responseQueue.value.map((item) => ({ ...item, gtCachePath: null, gtSavedPath: null, gtError: "" }));
   gtSettingsDialog.visible = false;
-  await generateGTVisualizations();
+  bumpVisualizationRefresh();
+  await refreshCurrentGTVisualizationIfVisible();
 }
 
 async function openGTBrowser() {
@@ -1519,7 +1602,8 @@ async function selectGTLabelFolder(node) {
     return;
   }
   gtLabelDir.value = node.path;
-  await generateGTVisualizations();
+  responseQueue.value = responseQueue.value.map((item) => ({ ...item, gtCachePath: null, gtSavedPath: null, gtError: "" }));
+  bumpVisualizationRefresh();
 }
 
 async function reloadGTRoot() {
@@ -1598,7 +1682,8 @@ async function runAnnotationConversion() {
           targetFormat: conversionTargetFormat.value,
           names: gtNames.value,
           predictions: conversionPredictions.value,
-          outDir: conversionOutDir.value || null,
+          pipelineName: editor.name,
+          cacheBucket: currentCacheBucket.value,
         }
       : {
           imageDir: evaluationImageDir.value,
@@ -1606,7 +1691,8 @@ async function runAnnotationConversion() {
           sourceFormat: gtFormat.value,
           targetFormat: conversionTargetFormat.value,
           names: gtNames.value,
-          outDir: conversionOutDir.value || null,
+          pipelineName: editor.name,
+          cacheBucket: currentCacheBucket.value,
         };
     const response = await fetch(endpoint, {
       method: "POST",
@@ -1619,6 +1705,12 @@ async function runAnnotationConversion() {
     conversionError.value = error.message;
   } finally {
     conversionRunning.value = false;
+  }
+}
+
+async function refreshCurrentGTVisualizationIfVisible() {
+  if (previewMode.value === "gt" && selectedImagePath.value) {
+    await refreshCurrentGTVisualization();
   }
 }
 
@@ -1764,6 +1856,51 @@ async function openFileBrowser() {
 
 function closeFileBrowser() {
   showFileBrowser.value = false;
+}
+
+async function loadPipelineCache() {
+  if (!editor.name) return;
+  cacheLoading.value = true;
+  cacheError.value = "";
+  try {
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/cache`);
+    if (!response.ok) throw await responseToError(response, "Failed to load cache folders");
+    const data = await response.json();
+    cacheItems.value = data.items || [];
+    selectedCacheBuckets.value = selectedCacheBuckets.value.filter((name) => cacheItems.value.some((item) => item.name === name));
+  } catch (error) {
+    cacheError.value = error.message;
+  } finally {
+    cacheLoading.value = false;
+  }
+}
+
+function toggleCacheBucket(name, selected) {
+  const current = new Set(selectedCacheBuckets.value);
+  if (selected) current.add(name);
+  else current.delete(name);
+  selectedCacheBuckets.value = [...current];
+}
+
+function toggleAllCacheBuckets(selected) {
+  selectedCacheBuckets.value = selected ? cacheItems.value.map((item) => item.name) : [];
+}
+
+async function deleteSelectedCacheBuckets() {
+  if (!editor.name || !selectedCacheBuckets.value.length) return;
+  cacheError.value = "";
+  try {
+    const response = await fetch(`/api/pipelines/${encodeURIComponent(editor.name)}/cache`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ buckets: selectedCacheBuckets.value }),
+    });
+    if (!response.ok) throw await responseToError(response, "Failed to delete cache folders");
+    selectedCacheBuckets.value = [];
+    await loadPipelineCache();
+  } catch (error) {
+    cacheError.value = error.message;
+  }
 }
 
 async function openResultsBrowser() {
@@ -2152,7 +2289,7 @@ async function saveJsonAsset(kind, payload) {
       [kind]: data.path || null,
     };
     formSuccess.value = kind === "body" && migratedBody && Object.keys(migratedBody.placeholderPaths).length
-      ? "body.json 已保存；自动识别的请求配置尚未保存"
+      ? "body.json saved; detected request config is not saved yet."
       : `${kind}.json saved`;
   } catch (error) {
     formError.value = error.message;
@@ -2400,16 +2537,18 @@ async function loadSavedRunResults(inputPath, runFolder = "") {
 }
 
 function applyRunItems(items) {
-  const resultMap = new Map((items || []).map((item) => [item.imagePath, item]));
-  const hasVisualizationUpdates = (items || []).some((item) => item.predCachePath || item.gtCachePath || item.predSavedPath || item.gtSavedPath);
+  const runItems = items || [];
+  const resultMap = new Map(runItems.flatMap((item) => responsePathKeys(item.imagePath).map((key) => [key, item])));
+  const hasVisualizationUpdates = runItems.some((item) => item.predCachePath || item.gtCachePath || item.predSavedPath || item.gtSavedPath);
   responseQueue.value = responseQueue.value.map((queueItem) => {
-    const result = resultMap.get(queueItem.imagePath);
+    const result = findRunItemForQueueItem(queueItem, resultMap, runItems);
     if (!result) {
       return queueItem;
     }
     return {
       ...queueItem,
       ...result,
+      imagePath: queueItem.imagePath,
       status: result.ok ? "success" : "failed",
       sending: false,
     };
@@ -2417,6 +2556,26 @@ function applyRunItems(items) {
   if (hasVisualizationUpdates) {
     bumpVisualizationRefresh();
   }
+}
+
+function findRunItemForQueueItem(queueItem, resultMap, runItems) {
+  for (const key of responsePathKeys(queueItem.imagePath)) {
+    const result = resultMap.get(key);
+    if (result) return result;
+  }
+  if (runItems.length === 1 && selectedImagePath.value === queueItem.imagePath) {
+    return runItems[0];
+  }
+  return null;
+}
+
+function responsePathKeys(path) {
+  const normalized = normalizeFilesystemPath(path).toLowerCase();
+  if (!normalized) return [];
+  const keys = [normalized];
+  const base = baseName(normalized).toLowerCase();
+  if (base) keys.push("basename:" + base);
+  return Array.from(new Set(keys));
 }
 
 async function requestPipelineRun(inputPath) {
@@ -2467,7 +2626,6 @@ async function runAllImages() {
     }
     runResult.value = { items: allItems };
     selectedImagePath.value ||= selectedItems[0]?.imagePath || "";
-    activeResponseTab.value = "raw-response";
   } finally {
     responseQueue.value = responseQueue.value.map((item) => ({ ...item, sending: false }));
     runningAll.value = false;
@@ -2520,7 +2678,6 @@ async function runSingleImage(item) {
   try {
     const data = await requestPipelineRun(item.imagePath);
     applyRunItems(data.items);
-    activeResponseTab.value = "raw-response";
   } catch (error) {
     responseQueue.value = responseQueue.value.map((queueItem) =>
       queueItem.imagePath === item.imagePath
@@ -2569,7 +2726,7 @@ function ensureDisplayContext() {
 function ensureJsonDependencyReady() {
   formError.value = "";
   if (!jsonDependencyReady.value) {
-    formError.value = "请先保存 Body JSON 和 Response JSON，再编辑响应映射或请求配置。";
+    formError.value = "Please save Body JSON and Response JSON before editing mapping or request config.";
     activeRequestTab.value = hasJsonContent(savedBodyJson.value) ? "response" : "body";
     return false;
   }
@@ -2765,6 +2922,10 @@ function imageContentUrl(path) {
 
 function bumpVisualizationRefresh() {
   visualizationRefreshNonce.value += 1;
+}
+
+function hasResponseValue(source, key) {
+  return Boolean(source && Object.prototype.hasOwnProperty.call(source, key) && source[key] !== undefined && source[key] !== null);
 }
 
 function stringify(value) {

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 import json
@@ -15,17 +15,22 @@ from backend.pipeline_core.protocols.mappers import load_response_rules
 
 
 CODE_ROOT = Path(__file__).resolve().parents[2]
-DATA_ROOT = Path(os.getenv("FUXING_DATA_ROOT", CODE_ROOT / "data")).resolve()
+DATA_ROOT = Path(os.getenv("WEB_POST_DATA_ROOT", CODE_ROOT / "data")).resolve()
 PROJECT_ROOT = DATA_ROOT
-DEFINITIONS_DIR = DATA_ROOT / "definitions"
 TEMPLATES_DIR = DATA_ROOT / "templates"
-GROUPS_FILE = DATA_ROOT / "groups.json"
 PIPELINE_CONFIG_NAME = "pipeline.json"
 RESERVED_TEMPLATE_DIR_NAMES = {"requests", "responses", "__pycache__"}
 UNGROUPED_GROUP_NAME = "Ungrouped"
 DELETED_GROUP_NAME = "Deleted"
 PIPELINE_NAME_PATTERN = r"^[a-z][a-z0-9_-]{2,63}$"
 SYSTEM_GROUP_NAMES = {UNGROUPED_GROUP_NAME, DELETED_GROUP_NAME}
+PIPELINE_ASSET_FILES = {
+    "header": "header.json",
+    "body": "body.json",
+    "response": "response.json",
+    "mapping": "mapping.json",
+    "post_config": "post_config.json",
+}
 
 
 @dataclass(slots=True)
@@ -37,16 +42,11 @@ class PipelineDefinition:
     transport: TransportKind = "http"
     method: Literal["POST", "GET", "PUT", "PATCH", "DELETE"] = "POST"
     image_directory: str | None = None
-    header_json: str | None = None
-    body_json: str | None = None
-    response_template_json: str | None = None
-    response_map_json: str | None = None
-    post_config_json: str | None = None
     default_inputs: dict[str, Any] | None = None
     response_config: ResponseParserConfig | None = None
     connect_timeout: float = 3
     read_timeout: float = 30
-    storage_kind: Literal["legacy", "grouped"] = "legacy"
+    storage_kind: Literal["grouped"] = "grouped"
     storage_path: str | None = None
 
 
@@ -56,29 +56,23 @@ def get_pipeline_names() -> dict[str, PipelineDefinition]:
     for definition in _iter_grouped_pipeline_definitions():
         definitions[definition.name] = definition
 
-    if DEFINITIONS_DIR.exists():
-        for definition_path in sorted(DEFINITIONS_DIR.glob("*.json")):
-            definition = load_pipeline_definition(definition_path)
-            definitions.setdefault(definition.name, definition)
 
     return definitions
 
 
 def get_pipeline_groups() -> list[str]:
-    groups: list[str] = []
-    if GROUPS_FILE.exists():
-        with GROUPS_FILE.open("r", encoding="utf-8") as file:
-            raw = json.load(file)
-        if isinstance(raw, list):
-            groups = [str(item).strip() for item in raw if str(item).strip()]
+    discovered: set[str] = {UNGROUPED_GROUP_NAME, DELETED_GROUP_NAME}
+    if TEMPLATES_DIR.exists():
+        for group_dir in sorted(TEMPLATES_DIR.iterdir()):
+            if group_dir.is_dir() and group_dir.name not in RESERVED_TEMPLATE_DIR_NAMES:
+                discovered.add(group_dir.name)
 
-    discovered = {
-        definition.group_name.strip()
-        for definition in get_pipeline_names().values()
-        if definition.group_name and definition.group_name.strip()
-    }
-    ordered = list(dict.fromkeys(groups + sorted(discovered)))
-    return ordered
+    for definition in get_pipeline_names().values():
+        if definition.group_name and definition.group_name.strip():
+            discovered.add(definition.group_name.strip())
+
+    ordered = sorted(discovered - SYSTEM_GROUP_NAMES)
+    return [UNGROUPED_GROUP_NAME, *ordered, DELETED_GROUP_NAME]
 
 
 def get_pipeline_names_list() -> list[str]:
@@ -118,13 +112,14 @@ def build_pipeline_bundle(name: str, storage_dir: str | Path | None = None):
     definition = get_pipeline_definition(name)
     storage = "json" if storage_dir is not None else None
     storage_kwargs = {"save_dir": str(storage_dir)} if storage_dir is not None else None
+    asset_paths = get_pipeline_asset_paths(definition, existing_only=True)
 
     return create_request_pipeline(
         display_name=definition.display_name,
         url=_resolve_pipeline_url(definition.url),
         transport=definition.transport,
-        header_json=_resolve_optional_file(definition.header_json),
-        body_json=_resolve_optional_file(definition.body_json),
+        header_json=asset_paths.get("header"),
+        body_json=asset_paths.get("body"),
         response_config=definition.response_config or _raise_missing_response_config(name),
         method=definition.method,
         connect_timeout=definition.connect_timeout,
@@ -132,7 +127,7 @@ def build_pipeline_bundle(name: str, storage_dir: str | Path | None = None):
         storage=storage,
         storage_kwargs=storage_kwargs,
         default_inputs=definition.default_inputs,
-        post_config=_load_optional_json_mapping(definition.post_config_json),
+        post_config=_load_optional_json_mapping(asset_paths.get("post_config")),
     )
 
 
@@ -149,11 +144,6 @@ def save_pipeline_definition(
     transport: TransportKind = "http",
     method: Literal["POST", "GET", "PUT", "PATCH", "DELETE"] = "POST",
     image_directory: str | None = None,
-    header_json: str | None = None,
-    body_json: str | None = None,
-    response_template_json: str | None = None,
-    response_map_json: str | None = None,
-    post_config_json: str | None = None,
     default_inputs: dict[str, Any] | None = None,
     response_config: ResponseParserConfig | None = None,
     connect_timeout: float = 3,
@@ -176,8 +166,6 @@ def save_pipeline_definition(
             if output_dir.exists():
                 shutil.rmtree(output_dir)
             shutil.move(str(existing_path), str(output_dir))
-        elif existing.storage_kind == "legacy" and output_dir.exists():
-            shutil.rmtree(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     create_pipeline_group(normalized_group)
@@ -190,11 +178,6 @@ def save_pipeline_definition(
         "transport": transport,
         "method": method,
         "image_directory": image_directory,
-        "header_json": header_json,
-        "body_json": body_json,
-        "response_template_json": response_template_json,
-        "response_map_json": response_map_json,
-        "post_config_json": post_config_json,
         "default_inputs": default_inputs,
         "connect_timeout": connect_timeout,
         "read_timeout": read_timeout,
@@ -216,8 +199,8 @@ def load_pipeline_definition(path: str | Path) -> PipelineDefinition:
         raw = json.load(file)
 
     response_config = _load_response_config(raw, definition_path)
-    storage_kind = "grouped" if definition_path.name == PIPELINE_CONFIG_NAME else "legacy"
-    storage_root = definition_path.parent if storage_kind == "grouped" else definition_path
+    storage_kind = "grouped"
+    storage_root = definition_path.parent
 
     return PipelineDefinition(
         name=raw["name"],
@@ -227,11 +210,6 @@ def load_pipeline_definition(path: str | Path) -> PipelineDefinition:
         transport=raw.get("transport", "http"),
         method=raw.get("method", "POST"),
         image_directory=raw.get("image_directory"),
-        header_json=raw.get("header_json"),
-        body_json=raw.get("body_json"),
-        response_template_json=raw.get("response_template_json"),
-        response_map_json=raw.get("response_map_json"),
-        post_config_json=raw.get("post_config_json"),
         default_inputs=raw.get("default_inputs"),
         response_config=response_config,
         connect_timeout=raw.get("connect_timeout", 3),
@@ -250,34 +228,20 @@ def get_group_pipeline_dir(group_name: str | None, pipeline_name: str) -> Path:
     return TEMPLATES_DIR / normalize_group_name(group_name) / pipeline_name
 
 
-def normalize_display_dir_name(display_name: str | None) -> str:
-    normalized = (display_name or "").strip().replace("\\", "_").replace("/", "_")
-    return normalized or "Unnamed"
-
-
-def get_group_pipeline_asset_dir(group_name: str | None, display_name: str | None) -> Path:
-    return TEMPLATES_DIR / normalize_group_name(group_name) / normalize_display_dir_name(display_name)
-
 
 def create_pipeline_group(name: str) -> list[str]:
     normalized = normalize_group_name(name)
     validate_group_name(normalized)
-    groups = get_pipeline_groups()
-    if normalized not in groups:
-        groups.append(normalized)
-        _write_groups(groups)
     (TEMPLATES_DIR / normalized).mkdir(parents=True, exist_ok=True)
-    return groups
+    return get_pipeline_groups()
 
 
 def delete_pipeline_group(name: str) -> list[str]:
     normalized = normalize_group_name(name)
-    groups = [group for group in get_pipeline_groups() if group != normalized]
-    _write_groups(groups)
     group_dir = TEMPLATES_DIR / normalized
-    if group_dir.exists() and not any(group_dir.iterdir()):
-        group_dir.rmdir()
-    return groups
+    if group_dir.exists():
+        shutil.rmtree(group_dir)
+    return get_pipeline_groups()
 
 
 def rename_pipeline_group(name: str, next_name: str) -> list[str]:
@@ -294,8 +258,7 @@ def rename_pipeline_group(name: str, next_name: str) -> list[str]:
     if target_dir.exists():
         raise FileExistsError(f"Group already exists: {target_name}")
 
-    groups = get_pipeline_groups()
-    if current_name not in groups:
+    if not current_dir.exists() and current_name not in get_pipeline_groups():
         raise FileNotFoundError(f"Group not found: {current_name}")
 
     if current_dir.exists():
@@ -313,12 +276,10 @@ def rename_pipeline_group(name: str, next_name: str) -> list[str]:
         with config_path.open("r", encoding="utf-8") as file:
             payload = json.load(file)
         payload["group_name"] = target_name
-        _sync_pipeline_asset_paths(payload, target_name, pipeline_dir.name)
+        _sync_response_rule_path(payload, target_name, pipeline_dir.name)
         _write_json_atomic(config_path, payload)
 
-    ordered_groups = [target_name if group == current_name else group for group in groups]
-    _write_groups(ordered_groups)
-    return ordered_groups
+    return get_pipeline_groups()
 
 
 def validate_group_name(name: str) -> None:
@@ -334,22 +295,8 @@ def validate_group_name(name: str) -> None:
         raise ValueError("Group name cannot end with or repeat separators")
 
 
-def _sync_pipeline_asset_paths(payload: dict[str, Any], group_name: str, pipeline_name: str) -> None:
-    asset_files = {
-        "header_json": "header.json",
-        "body_json": "body.json",
-        "response_template_json": "response.json",
-        "response_map_json": "mapping.json",
-        "post_config_json": "post_config.json",
-    }
+def _sync_response_rule_path(payload: dict[str, Any], group_name: str, pipeline_name: str) -> None:
     pipeline_dir = get_group_pipeline_dir(group_name, pipeline_name)
-    for key, file_name in asset_files.items():
-        value = payload.get(key)
-        if isinstance(value, str) and value:
-            payload[key] = _replace_template_group_path(value, group_name)
-        elif (pipeline_dir / file_name).exists():
-            payload[key] = _to_data_relative(pipeline_dir / file_name)
-
     parser = payload.get("response_parser")
     if isinstance(parser, dict):
         rule_json = parser.get("rule_json")
@@ -374,7 +321,6 @@ def _replace_template_group_path(value: str, group_name: str) -> str:
 def update_pipeline_definition_assets(
     name: str,
     *,
-    asset_paths: dict[str, str | None],
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
     response_rule_json: str | None = None,
@@ -387,16 +333,6 @@ def update_pipeline_definition_assets(
     with config_path.open("r", encoding="utf-8") as file:
         payload = json.load(file)
 
-    allowed_fields = {
-        "header_json",
-        "body_json",
-        "response_template_json",
-        "response_map_json",
-        "post_config_json",
-    }
-    for field, value in asset_paths.items():
-        if field in allowed_fields:
-            payload[field] = value
     if connect_timeout is not None:
         payload["connect_timeout"] = connect_timeout
     if read_timeout is not None:
@@ -414,8 +350,6 @@ def update_pipeline_definition_group(name: str, group_name: str | None) -> None:
     definition = get_pipeline_definition(name)
     normalized_group = normalize_group_name(group_name)
     create_pipeline_group(normalized_group)
-    current_group = normalize_group_name(definition.group_name)
-
     if definition.storage_kind == "grouped" and definition.storage_path:
         current_dir = Path(definition.storage_path)
         next_dir = get_group_pipeline_dir(normalized_group, name)
@@ -428,61 +362,41 @@ def update_pipeline_definition_group(name: str, group_name: str | None) -> None:
         with config_path.open("r", encoding="utf-8") as file:
             payload = json.load(file)
         payload["group_name"] = normalized_group
-        _sync_pipeline_asset_paths(payload, normalized_group, name)
+        _sync_response_rule_path(payload, normalized_group, name)
         _write_json_atomic(config_path, payload)
-        current_asset_dir = get_group_pipeline_asset_dir(current_group, definition.display_name)
-        next_asset_dir = get_group_pipeline_asset_dir(normalized_group, definition.display_name)
-        if current_asset_dir.exists() and current_asset_dir != next_asset_dir:
-            next_asset_dir.parent.mkdir(parents=True, exist_ok=True)
-            if next_asset_dir.exists():
-                shutil.rmtree(next_asset_dir)
-            shutil.move(str(current_asset_dir), str(next_asset_dir))
         _cleanup_empty_group_dir(current_dir.parent)
-        _cleanup_empty_group_dir(current_asset_dir.parent)
         return
 
-    if definition.storage_kind == "legacy" and definition.storage_path:
-        next_dir = get_group_pipeline_dir(normalized_group, name)
-        next_dir.mkdir(parents=True, exist_ok=True)
 
-        header_path = _copy_optional_project_file(definition.header_json, next_dir / "header.json")
-        body_path = _copy_optional_project_file(definition.body_json, next_dir / "body.json")
-        response_template_path = _copy_optional_project_file(
-            definition.response_template_json,
-            next_dir / "response.json",
-        )
-        response_map_path = _copy_optional_project_file(definition.response_map_json, next_dir / "mapping.json")
-        post_config_path = _copy_optional_project_file(definition.post_config_json, next_dir / "post_config.json")
-        rule_json = definition.response_config.rule_json if definition.response_config else None
-        rule_path = _copy_optional_project_file(rule_json, next_dir / "rule.json")
+def get_pipeline_asset_path(definition: PipelineDefinition, asset_name: str, *, existing_only: bool = False) -> str | None:
+    file_name = PIPELINE_ASSET_FILES.get(asset_name)
+    if file_name is None or not definition.storage_path:
+        return None
+    path = Path(definition.storage_path) / file_name
+    if existing_only and not path.exists():
+        return None
+    return str(path)
 
-        response_config = ResponseParserConfig(
-            rule_json=_to_project_relative(rule_path) if rule_path is not None else None,
-            template_input=None,
-        )
 
-        save_pipeline_definition(
-            name=definition.name,
-            display_name=definition.display_name,
-            group_name=normalized_group,
-            url=definition.url,
-            transport=definition.transport,
-            method=definition.method,
-            image_directory=definition.image_directory,
-            header_json=_to_project_relative(header_path) if header_path is not None else None,
-            body_json=_to_project_relative(body_path) if body_path is not None else None,
-            response_template_json=_to_project_relative(response_template_path)
-            if response_template_path is not None
-            else None,
-            response_map_json=_to_project_relative(response_map_path) if response_map_path is not None else None,
-            post_config_json=_to_project_relative(post_config_path) if post_config_path is not None else None,
-            default_inputs=definition.default_inputs,
-            response_config=response_config,
-            connect_timeout=definition.connect_timeout,
-            read_timeout=definition.read_timeout,
-            overwrite=True,
-        )
+def get_pipeline_asset_relative_path(definition: PipelineDefinition, asset_name: str, *, existing_only: bool = False) -> str | None:
+    raw_path = get_pipeline_asset_path(definition, asset_name, existing_only=existing_only)
+    if raw_path is None:
+        return None
+    return _to_project_relative(Path(raw_path))
 
+
+def get_pipeline_asset_paths(definition: PipelineDefinition, *, existing_only: bool = False) -> dict[str, str | None]:
+    return {
+        asset_name: get_pipeline_asset_path(definition, asset_name, existing_only=existing_only)
+        for asset_name in PIPELINE_ASSET_FILES
+    }
+
+
+def get_pipeline_asset_relative_paths(definition: PipelineDefinition, *, existing_only: bool = False) -> dict[str, str | None]:
+    return {
+        asset_name: get_pipeline_asset_relative_path(definition, asset_name, existing_only=existing_only)
+        for asset_name in PIPELINE_ASSET_FILES
+    }
 
 def move_pipeline_to_deleted_group(name: str) -> None:
     definition = get_pipeline_definition(name)
@@ -522,18 +436,6 @@ def rename_pipeline_definition(name: str, next_name: str) -> str:
         _write_json_atomic(config_path, payload)
         return target_name
 
-    if definition.storage_kind == "legacy" and definition.storage_path:
-        legacy_path = Path(definition.storage_path)
-        target_path = legacy_path.with_name(f"{target_name}.json")
-        if target_path.exists():
-            raise FileExistsError(f"Pipeline storage already exists: {target_path}")
-        with legacy_path.open("r", encoding="utf-8") as file:
-            payload = json.load(file)
-        payload["name"] = target_name
-        _write_json_atomic(target_path, payload)
-        legacy_path.unlink()
-        return target_name
-
     raise FileNotFoundError(f"Pipeline storage not found for: {current_name}")
 
 
@@ -562,12 +464,6 @@ def remove_pipeline_definition(name: str) -> None:
             _cleanup_empty_group_dir(pipeline_dir.parent)
         return
 
-    if definition.storage_kind == "legacy" and definition.storage_path:
-        legacy_path = Path(definition.storage_path)
-        if legacy_path.exists():
-            legacy_path.unlink()
-        return
-
     raise FileNotFoundError(f"Pipeline storage not found for: {name}")
 
 
@@ -585,12 +481,6 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
         raise
-
-
-def _write_groups(groups: list[str]) -> None:
-    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
-    ordered = list(dict.fromkeys(normalize_group_name(group) for group in groups if str(group).strip()))
-    _write_json_atomic(GROUPS_FILE, ordered)
 
 
 def _iter_grouped_pipeline_definitions() -> list[PipelineDefinition]:
@@ -645,8 +535,8 @@ def _to_project_relative(path: Path) -> str:
 
 
 def _resolve_pipeline_url(value: str) -> str:
-    base_url = os.getenv("FUXING_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
-    return value.replace("${FUXING_BASE_URL}", base_url).replace("{FUXING_BASE_URL}", base_url)
+    base_url = os.getenv("WEB_POST_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+    return value.replace("${WEB_POST_BASE_URL}", base_url).replace("{WEB_POST_BASE_URL}", base_url)
 
 
 def _resolve_optional_file(value: str | None) -> str | None:
@@ -712,3 +602,4 @@ def _load_definition_response_rules(definition: PipelineDefinition) -> dict[str,
     if response_config.rule_json is not None:
         return load_response_rules(response_config.rule_json)
     return {}
+

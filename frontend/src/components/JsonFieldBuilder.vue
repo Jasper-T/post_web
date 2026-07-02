@@ -1,16 +1,9 @@
 <template>
-  <section class="json-schema-builder json-schema-summary">
-    <header class="json-schema-header json-schema-summary-header">
-      <span class="json-schema-summary-title">{{ title }}</span>
-      <div class="json-schema-header-actions">
-        <button class="small-button primary-button" type="button" @click="openEditor">Edit</button>
-      </div>
-    </header>
-
-    <section class="json-preview-card json-schema-inline-preview">
-      <header class="json-preview-card-header">
-        <span>Preview</span>
-        <div class="json-preview-mode-toggle" role="tablist" aria-label="Preview Mode">
+  <section class="json-schema-builder json-schema-summary json-preview-panel ui-panel">
+    <header class="json-schema-header json-schema-summary-header json-preview-panel-header ui-panel-header">
+      <span class="json-schema-summary-title">{{ previewTitle }}</span>
+      <div class="json-schema-header-actions json-preview-panel-actions ui-toolbar">
+        <div class="json-preview-mode-toggle ui-segmented" role="tablist" aria-label="Preview Mode">
           <button
             class="json-preview-mode-button"
             :class="{ active: previewMode === 'tree' }"
@@ -32,14 +25,16 @@
             JSON
           </button>
         </div>
-      </header>
-      <div class="json-preview-card-body">
-        <div v-if="previewMode === 'tree'" class="json-preview-tree-scroll">
-          <JsonPreviewTree label="root" :value="displayObject" />
-        </div>
-        <pre v-else>{{ displayText }}</pre>
+        <button class="ui-btn ui-btn-primary" type="button" @click="openEditor">Edit</button>
       </div>
-    </section>
+    </header>
+
+    <div class="json-preview-card-body json-preview-panel-body ui-panel-body">
+      <div v-if="previewMode === 'tree'" class="json-preview-tree-scroll">
+        <JsonPreviewTree label="root" :value="displayObject" />
+      </div>
+      <pre v-else>{{ displayText }}</pre>
+    </div>
 
     <div
       v-if="showEditor"
@@ -47,18 +42,18 @@
       @pointerdown.self="backdropCloseArmed = true"
       @click.self="handleBackdropClick"
     >
-      <div class="json-import-dialog json-schema-edit-dialog" role="dialog" aria-modal="true" :aria-label="title + ' editor'">
-        <div class="json-import-dialog-header json-schema-edit-header">
+      <div class="json-import-dialog json-schema-edit-dialog ui-panel" role="dialog" aria-modal="true" :aria-label="title + ' editor'">
+        <div class="json-import-dialog-header json-schema-edit-header ui-panel-header">
           <div>
             <p class="eyebrow">Schema Editor</p>
             <h4>{{ title }}</h4>
             <p>Edit with structured fields or raw JSON.</p>
           </div>
-          <button class="small-button icon-button" type="button" title="Close" aria-label="Close schema editor" @click="closeEditor"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+          <button class="ui-action-close ui-icon-close ui-btn ui-icon-btn" type="button" title="Close" aria-label="Close schema editor" @click="closeEditor"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
 
-        <div class="json-schema-edit-toolbar">
-          <div class="json-preview-mode-toggle" role="tablist" aria-label="Editor Mode">
+        <div class="json-schema-edit-toolbar ui-toolbar">
+          <div class="json-preview-mode-toggle ui-segmented" role="tablist" aria-label="Editor Mode">
             <button
               class="json-preview-mode-button"
               :class="{ active: editorMode === 'tree' }"
@@ -81,12 +76,12 @@
             </button>
           </div>
 
-          <div class="json-schema-edit-actions">
-            <button class="small-button" type="button" @click="clearEditor">Clear</button>
-            <button class="small-button primary-button" type="button" :disabled="saving" @click="saveEditor">
+          <div class="json-schema-edit-actions ui-toolbar">
+            <button class="ui-btn" type="button" @click="clearEditor">Clear</button>
+            <button class="ui-btn ui-btn-primary" type="button" :disabled="saving" @click="saveEditor">
               {{ saving ? "Saving..." : "Save" }}
             </button>
-            <button v-if="editorMode === 'tree'" class="small-button" type="button" @click="addRootField">Add Field</button>
+            <button v-if="editorMode === 'tree'" class="ui-btn" type="button" @click="addRootField">Add Field</button>
           </div>
         </div>
 
@@ -150,6 +145,10 @@ const jsonText = ref("{}");
 const editorError = ref("");
 const backdropCloseArmed = ref(false);
 
+const previewTitle = computed(() => {
+  const baseTitle = String(props.title || "JSON").replace(/\s+JSON$/i, "");
+  return `${baseTitle} Preview`;
+});
 const displayObject = computed(() => readCurrentObject());
 
 const displayText = computed(() => {

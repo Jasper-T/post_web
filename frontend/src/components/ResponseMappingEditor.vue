@@ -1,14 +1,14 @@
 <template>
   <div class="mapping-editor">
-    <div class="template-editor-toolbar">
-      <span class="template-editor-title">响应映射</span>
-      <div class="json-template-actions">
-        <button class="small-button primary-button" type="button" @click="$emit('save')">Save</button>
-        <button class="small-button" type="button" @click="showPreview = true">Preview</button>
+    <div class="template-editor-toolbar ui-toolbar">
+      <span class="template-editor-title">Parsing</span>
+      <div class="json-template-actions ui-toolbar">
+        <button class="ui-btn ui-btn-primary" type="button" @click="$emit('save')">Save</button>
+        <button class="ui-btn" type="button" @click="showPreview = true">Preview</button>
       </div>
     </div>
 
-    <label class="tool-field">
+    <label class="tool-field ui-field">
       <span>Collection Path</span>
       <select
         class="kv-cell-input"
@@ -22,7 +22,7 @@
       </select>
     </label>
 
-    <label class="tool-field">
+    <label class="tool-field ui-field">
       <span>Item Path</span>
       <select class="kv-cell-input" :value="modelValue.itemPath" @change="updateField('itemPath', $event.target.value)">
         <option value="">None</option>
@@ -33,11 +33,11 @@
     </label>
 
     <div class="mapping-switch-row">
-      <div class="mapping-switch">
+      <div class="mapping-switch ui-switch-card">
         <span>BBox / Point</span>
         <strong>{{ modelValue.bboxInputMode === "fields" ? "Point" : "BBox" }}</strong>
         <button
-          class="mapping-switch-button"
+          class="mapping-switch-button ui-icon-switch ui-icon-btn"
           type="button"
           :title="modelValue.bboxInputMode === 'fields' ? 'Switch to BBox' : 'Switch to Point'"
           :aria-label="modelValue.bboxInputMode === 'fields' ? 'Switch to BBox' : 'Switch to Point'"
@@ -49,11 +49,11 @@
           </svg>
         </button>
       </div>
-      <div class="mapping-switch">
+      <div class="mapping-switch ui-switch-card">
         <span>XYWH / XYXY</span>
         <strong>{{ modelValue.bboxCoordinateType === "xywh" ? "XYWH" : "XYXY" }}</strong>
         <button
-          class="mapping-switch-button"
+          class="mapping-switch-button ui-icon-switch ui-icon-btn"
           type="button"
           :title="modelValue.bboxCoordinateType === 'xywh' ? 'Switch to XYXY' : 'Switch to XYWH'"
           :aria-label="modelValue.bboxCoordinateType === 'xywh' ? 'Switch to XYXY' : 'Switch to XYWH'"
@@ -67,7 +67,7 @@
       </div>
     </div>
 
-    <div class="mapping-table">
+    <div class="mapping-table ui-table">
       <div class="mapping-head mapping-head-compact">
         <span>Key(out)</span>
         <span>Type</span>
@@ -75,7 +75,7 @@
         <span>Plot</span>
       </div>
 
-      <div v-for="(row, index) in detectionRows" :key="`det-${row.key}`" class="mapping-row mapping-row-compact">
+      <div v-for="(row, index) in detectionRows" :key="`det-${row.key}`" class="mapping-row mapping-row-compact ui-table-row">
         <input class="kv-cell-input" :value="row.key" disabled />
         <input class="kv-cell-input" :value="row.type" disabled />
         <select
@@ -95,12 +95,12 @@
       </div>
     </div>
 
-    <div class="mapping-extra-header">
+    <div class="mapping-extra-header ui-toolbar">
       <span class="template-editor-title">Extra Params</span>
-      <button class="small-button" type="button" @click="addExtraRow">Add</button>
+      <button class="ui-btn" type="button" @click="addExtraRow">Add</button>
     </div>
 
-    <div class="mapping-table">
+    <div class="mapping-table ui-table">
       <div class="mapping-head mapping-head-compact">
         <span>Key(out)</span>
         <span>Type</span>
@@ -109,7 +109,7 @@
         <span></span>
       </div>
 
-      <div v-for="(row, index) in modelValue.extraFields" :key="row.id" class="mapping-row mapping-row-extra">
+      <div v-for="(row, index) in modelValue.extraFields" :key="row.id" class="mapping-row mapping-row-extra ui-table-row">
         <input class="kv-cell-input" :value="row.name" @input="updateExtraRow(index, 'name', $event.target.value)" />
         <select class="kv-cell-input" :value="row.cast" @change="updateExtraRow(index, 'cast', $event.target.value)">
           <option value="string">string</option>
@@ -126,15 +126,15 @@
         <label class="mapping-plot-check" :title="row.name ? 'Use ' + row.name + ' in plot text' : 'Set Key(out) first'">
           <input type="checkbox" :checked="Boolean(row.plot)" :disabled="!String(row.name || '').trim()" @change="updateExtraPlot(index, $event.target.checked)" />
         </label>
-        <button class="kv-delete-button" type="button" @click="removeExtraRow(index)">Delete</button>
+        <button class="ui-action-delete ui-icon-delete kv-delete-button ui-btn ui-btn-danger" type="button" @click="removeExtraRow(index)"><span class="ui-action-label">Delete</span></button>
       </div>
     </div>
 
     <div v-if="showPreview" class="json-import-backdrop" @click.self="showPreview = false">
-      <div class="json-import-dialog json-preview-dialog">
-        <div class="json-import-dialog-header">
+      <div class="json-import-dialog json-preview-dialog ui-panel">
+        <div class="json-import-dialog-header ui-panel-header">
           <h4>Schema Preview</h4>
-          <button class="small-button icon-button" type="button" title="Close" aria-label="Close schema preview" @click="showPreview = false"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+          <button class="ui-action-close ui-icon-close ui-btn ui-icon-btn" type="button" title="Close" aria-label="Close schema preview" @click="showPreview = false"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
         <pre class="json-template-saved-preview">{{ previewText }}</pre>
       </div>

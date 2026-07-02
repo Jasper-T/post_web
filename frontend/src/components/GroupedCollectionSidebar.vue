@@ -6,9 +6,9 @@
         <h2>{{ title }}</h2>
       </div>
       <div class="sidebar-header-actions">
-        <button v-if="!isSidebarCollapsed" class="small-button" type="button" @click="showManager = true">Edit</button>
+        <button v-if="!isSidebarCollapsed" class="ui-btn" type="button" @click="showManager = true">Edit</button>
         <button
-          class="sidebar-collapse-button"
+          class="sidebar-collapse-button ui-icon-collapse ui-icon-btn"
           type="button"
           :aria-label="isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
           @click="toggleSidebar"
@@ -30,37 +30,37 @@
 
     <section v-if="!isSidebarCollapsed" class="panel sidebar-panel collection-sidebar-panel">
       <div class="collection-sidebar-scroll" @contextmenu.prevent="openBlankContextMenu($event)">
-        <div class="pipeline-template-list">
-          <div v-for="group in regularGroups" :key="group.name" class="pipeline-group-section">
+        <div class="pipeline-template-list ui-tree">
+          <div v-for="group in regularGroups" :key="group.name" class="pipeline-group-section ui-tree-branch">
             <button
-              class="pipeline-group-toggle"
+              class="pipeline-group-toggle ui-list-item ui-tree-node"
               type="button"
               :aria-expanded="!collapsedGroups[group.name]"
               @click="toggleGroupCollapse(group.name)"
               @contextmenu.prevent.stop="openGroupContextMenu($event, group)"
             >
               <span
-                class="pipeline-group-arrow"
+                class="pipeline-group-arrow ui-tree-caret"
                 :class="{ collapsed: collapsedGroups[group.name] }"
                 aria-hidden="true"
               ></span>
-              <div class="pipeline-group-title">
+              <div class="pipeline-group-title ui-tree-content">
                 <strong>{{ group.name }}</strong>
                 <span>{{ group.items.length }}</span>
               </div>
             </button>
 
-            <div v-if="!collapsedGroups[group.name]" class="pipeline-group-items">
+            <div v-if="!collapsedGroups[group.name]" class="pipeline-group-items ui-tree-children">
               <button
                 v-for="item in group.items"
                 :key="item.key"
-                class="pipeline-template-button"
+                class="pipeline-template-button ui-list-item ui-tree-node"
                 :class="{ active: activeItemKey === item.key }"
                 type="button"
                 @click="$emit('select-item', item.raw)"
                 @contextmenu.prevent.stop="openItemContextMenu($event, item, group)"
               >
-                <div class="pipeline-template-row">
+                <div class="pipeline-template-row ui-tree-content">
                   <strong>{{ item.label }}</strong>
                   <span v-if="item.badge" class="request-method-pill" :class="item.badgeClass">{{ item.badge }}</span>
                 </div>
@@ -72,33 +72,33 @@
 
       <div v-if="trashGroup" class="collection-trash-dock">
         <button
-          class="pipeline-group-toggle trash-toggle"
+          class="pipeline-group-toggle trash-toggle ui-list-item ui-tree-node"
           type="button"
           :aria-expanded="!collapsedGroups[trashGroup.name]"
           @click="toggleGroupCollapse(trashGroup.name)"
         >
           <span
-            class="pipeline-group-arrow"
+            class="pipeline-group-arrow ui-tree-caret"
             :class="{ collapsed: collapsedGroups[trashGroup.name] }"
             aria-hidden="true"
           ></span>
-          <div class="pipeline-group-title">
+          <div class="pipeline-group-title ui-tree-content">
             <strong>{{ trashLabel }}</strong>
             <span>{{ trashGroup.items.length }}</span>
           </div>
         </button>
 
-        <div v-if="!collapsedGroups[trashGroup.name]" class="pipeline-group-items trash-items">
+        <div v-if="!collapsedGroups[trashGroup.name]" class="pipeline-group-items trash-items ui-tree-children">
           <button
             v-for="item in trashGroup.items"
             :key="item.key"
-            class="pipeline-template-button trash-item-button"
+            class="pipeline-template-button trash-item-button ui-list-item ui-tree-node"
             :class="{ active: activeItemKey === item.key }"
             type="button"
             @click="$emit('select-item', item.raw)"
             @contextmenu.prevent.stop="openItemContextMenu($event, item, trashGroup)"
           >
-            <div class="pipeline-template-row">
+            <div class="pipeline-template-row ui-tree-content">
               <strong>{{ item.label }}</strong>
               <span v-if="item.badge" class="request-method-pill" :class="item.badgeClass">{{ item.badge }}</span>
             </div>
@@ -115,7 +115,7 @@
           <p class="eyebrow">{{ eyebrow }}</p>
           <h3>{{ managerTitle }}</h3>
         </div>
-        <button class="small-button icon-button" type="button" title="Close" aria-label="Close collections editor" @click="closeManager"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+        <button class="ui-action-close ui-icon-close ui-btn ui-icon-btn" type="button" title="Close" aria-label="Close collections editor" @click="closeManager"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
       </div>
 
       <div class="collection-manager-toolbar">
@@ -125,14 +125,14 @@
           placeholder="New group name"
           @keydown.enter.prevent="submitCreateGroup"
         />
-        <button class="small-button primary-button" type="button" @click="submitCreateGroup">Create Group</button>
+        <button class="ui-btn ui-btn-primary" type="button" @click="submitCreateGroup">Create Group</button>
       </div>
 
       <div class="collection-manager-body">
         <div v-for="group in groups" :key="`manager-${group.name}`" class="collection-manager-group">
           <div class="collection-manager-group-header">
             <div class="collection-manager-group-title-block">
-              <div class="pipeline-group-title">
+              <div class="pipeline-group-title ui-tree-content">
                 <strong v-if="editingGroup !== group.name">{{ group.isTrash ? trashLabel : group.name }}</strong>
                 <input
                   v-else
@@ -148,7 +148,7 @@
             <div class="collection-manager-item-controls">
               <button
                 v-if="group.canRename && editingGroup !== group.name"
-                class="small-button"
+                class="ui-btn"
                 type="button"
                 @click="startRenameGroup(group)"
               >
@@ -156,7 +156,7 @@
               </button>
               <button
                 v-if="group.canRename && editingGroup === group.name"
-                class="small-button primary-button"
+                class="ui-btn ui-btn-primary"
                 type="button"
                 @click="submitRenameGroup(group)"
               >
@@ -164,17 +164,17 @@
               </button>
               <button
                 v-if="group.canDelete"
-                class="small-button danger-button"
+                class="ui-action-delete ui-icon-delete ui-btn ui-btn-danger"
                 type="button"
                 @click="$emit('delete-group', group.name)"
               >
-                Delete
+                <span class="ui-action-label">Delete</span>
               </button>
             </div>
           </div>
 
           <div class="collection-manager-list">
-            <div v-for="item in group.items" :key="`manager-item-${item.key}`" class="collection-manager-item">
+            <div v-for="item in group.items" :key="`manager-item-${item.key}`" class="collection-manager-item ui-list-item">
               <div class="collection-manager-item-main">
                 <strong>{{ item.label }}</strong>
                 <small v-if="item.subtitle">{{ item.subtitle }}</small>
@@ -185,13 +185,13 @@
                     {{ option }}
                   </option>
                 </select>
-                <button class="small-button" type="button" @click="submitMoveItem(item)">Move</button>
+                <button class="ui-btn" type="button" @click="submitMoveItem(item)">Move</button>
                 <button
-                  class="small-button danger-button"
+                  class="ui-action-delete ui-icon-delete ui-btn ui-btn-danger"
                   type="button"
                   @click="$emit('delete-item', { item: item.raw, permanent: Boolean(group.isTrash) })"
                 >
-                  delete
+                  <span class="ui-action-label">Delete</span>
                 </button>
               </div>
             </div>
@@ -212,9 +212,7 @@
     <template v-if="contextMenu.type === 'item' && contextMenu.item">
       <button type="button" @click="createPipelineInGroup(contextMenu.group?.name || '')">New pipeline in this group</button>
       <button type="button" @click="cloneItem(contextMenu.item)">Clone</button>
-      <button type="button" @click="deleteItem(contextMenu.item, Boolean(contextMenu.group?.isTrash))">
-        {{ contextMenu.group?.isTrash ? 'Delete permanently' : 'Move to Deleted' }}
-      </button>
+      <button class="ui-action-delete ui-icon-delete" type="button" @click="deleteItem(contextMenu.item, Boolean(contextMenu.group?.isTrash))"><span class="ui-action-label">Delete</span></button>
       <div class="collection-context-separator"></div>
       <p class="collection-context-label">Move to...</p>
       <button
@@ -231,7 +229,7 @@
     <template v-else-if="contextMenu.type === 'group' && contextMenu.group">
       <button type="button" @click="createPipelineInGroup(contextMenu.group.name)">New pipeline</button>
       <button v-if="contextMenu.group.canRename" type="button" @click="renameGroupFromContext(contextMenu.group)">Rename group</button>
-      <button v-if="contextMenu.group.canDelete" type="button" @click="deleteGroupFromContext(contextMenu.group)">Delete group</button>
+      <button v-if="contextMenu.group.canDelete" class="ui-action-delete ui-icon-delete" type="button" @click="deleteGroupFromContext(contextMenu.group)"><span class="ui-action-label">Delete</span></button>
       <button type="button" disabled>Paste / Move here</button>
     </template>
 

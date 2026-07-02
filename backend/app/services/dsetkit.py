@@ -1,5 +1,6 @@
-from datetime import datetime
+﻿from datetime import datetime
 from pathlib import Path
+import shutil
 import tempfile
 
 from fastapi import HTTPException
@@ -17,6 +18,7 @@ from backend.app.schemas.dsetkit import (
 
 
 SUPPORTED_FORMATS = ("labelme", "voc", "yolo")
+CACHE_ROOT = DATA_ROOT / ".cache"
 FORMAT_DIRS = {
     "labelme": "labelme",
     "voc": "xmls",
@@ -108,19 +110,56 @@ def reject_existing_output_directory(path: Path) -> None:
         raise HTTPException(status_code=409, detail=f"Output directory already exists: {path}")
 
 
+def prepare_output_directory(path: Path, *, allow_overwrite: bool = False) -> None:
+    if not path.exists():
+        return
+    if allow_overwrite:
+        shutil.rmtree(path)
+        return
+    reject_existing_output_directory(path)
+
+
 def convert_target_directory(out_dir: Path, target_format: str) -> Path:
+    return out_dir / target_format
+
+
+def dsetkit_output_directory(out_dir: Path, target_format: str) -> Path:
     return out_dir / FORMAT_DIRS[target_format]
+
+
+def prepare_conversion_output(out_dir: Path, target_format: str, *, allow_overwrite: bool = False) -> Path:
+    target_dir = convert_target_directory(out_dir, target_format)
+    actual_dir = dsetkit_output_directory(out_dir, target_format)
+    prepare_output_directory(target_dir, allow_overwrite=allow_overwrite)
+    if actual_dir != target_dir:
+        prepare_output_directory(actual_dir, allow_overwrite=allow_overwrite)
+    return target_dir
+
+
+def finalize_conversion_output(out_dir: Path, target_format: str) -> Path:
+    target_dir = convert_target_directory(out_dir, target_format)
+    actual_dir = dsetkit_output_directory(out_dir, target_format)
+    if actual_dir != target_dir and actual_dir.exists():
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        actual_dir.rename(target_dir)
+    return target_dir
+
 
 def _timestamp() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
-def pred_convert_output_directory(raw_path: str | None, target_format: str) -> tuple[Path, Path]:
-    out_dir = resolve_output_directory(
-        raw_path,
-        fallback_parent=DATA_ROOT / "conversions" / "pred" / _timestamp(),
-    )
-    target_dir = convert_target_directory(out_dir, target_format)
+def cache_conversion_base_dir(pipeline_name: str | None, cache_bucket: str | None, fallback: Path) -> Path:
+    if pipeline_name and cache_bucket:
+        return CACHE_ROOT / pipeline_name / cache_bucket
+    return fallback
+
+
+def pred_convert_output_directory(raw_path: str | None, target_format: str, pipeline_name: str | None = None, cache_bucket: str | None = None) -> tuple[Path, Path]:
+    base_dir = cache_conversion_base_dir(pipeline_name, cache_bucket, DATA_ROOT / "conversions" / "pred" / _timestamp())
+    out_dir = resolve_output_directory(raw_path, fallback_parent=base_dir)
+    target_dir = prepare_conversion_output(out_dir, target_format, allow_overwrite=bool(pipeline_name and cache_bucket))
     return out_dir, target_dir
 
 
@@ -130,14 +169,14 @@ def get_tools_payload() -> dict:
         "tools": [
             {
                 "id": "convert",
-                "name": "标注格式转换",
-                "description": "批量转换 LabelMe / VOC / YOLO 标注格式。",
+                "name": "Annotation Conversion",
+                "description": "Batch convert LabelMe / VOC / YOLO annotation formats.",
                 "requiresTargetFormat": True,
             },
             {
                 "id": "plot",
-                "name": "标注可视化",
-                "description": "把标注框绘制到图像上并批量导出。",
+                "name": "Annotation Preview",
+                "description": "Draw annotation boxes on images and export them in batches.",
                 "requiresTargetFormat": False,
             },
         ],
@@ -149,11 +188,10 @@ def run_convert(request: DsetkitConvertRequest) -> DsetkitRunResponse:
     label_dir = resolve_directory(request.labelDir, field_name="labelDir")
     out_dir = resolve_output_directory(
         request.outDir,
-        fallback_parent=label_dir.parent,
+        fallback_parent=cache_conversion_base_dir(request.pipelineName, request.cacheBucket, label_dir.parent),
     )
     names = normalize_names(request.names)
-    target_dir = convert_target_directory(out_dir, request.targetFormat)
-    reject_existing_output_directory(target_dir)
+    target_dir = prepare_conversion_output(out_dir, request.targetFormat, allow_overwrite=bool(request.pipelineName and request.cacheBucket))
 
     try:
         from dsetkit.tools import convert_dirs
@@ -166,6 +204,7 @@ def run_convert(request: DsetkitConvertRequest) -> DsetkitRunResponse:
             names=names,
             out_dir=out_dir,
         )
+        target_dir = finalize_conversion_output(out_dir, request.targetFormat)
     except ImportError as exc:
         raise HTTPException(status_code=500, detail="dsetkit is not importable by the backend") from exc
     except ValueError as exc:
@@ -176,7 +215,7 @@ def run_convert(request: DsetkitConvertRequest) -> DsetkitRunResponse:
     return DsetkitRunResponse(
         tool="convert",
         status="success",
-        message="标注格式转换已完成。",
+        message="Annotations converted.",
         outputDir=str(target_dir),
     )
 
@@ -212,7 +251,7 @@ def run_plot(request: DsetkitPlotRequest) -> DsetkitRunResponse:
     return DsetkitRunResponse(
         tool="plot",
         status="success",
-        message="标注可视化已完成。",
+        message="Annotations visualized.",
         outputDir=str(out_dir),
     )
 
@@ -230,8 +269,7 @@ def run_pred_convert(request: DsetkitPredConvertRequest) -> DsetkitRunResponse:
     if not predictions_by_image:
         raise HTTPException(status_code=422, detail="At least one parsed prediction is required")
 
-    out_dir, target_dir = pred_convert_output_directory(request.outDir, request.targetFormat)
-    reject_existing_output_directory(target_dir)
+    out_dir, target_dir = pred_convert_output_directory(request.outDir, request.targetFormat, request.pipelineName, request.cacheBucket)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -239,7 +277,7 @@ def run_pred_convert(request: DsetkitPredConvertRequest) -> DsetkitRunResponse:
         from dsetkit.annotations.schema import Annotation, AnnotationItem, BBox
         from dsetkit.utils.image import read_image_info
 
-        with tempfile.TemporaryDirectory(prefix="fuxing-pred-convert-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="web-post-pred-convert-") as tmp:
             source_dir = Path(tmp) / "labelme"
             source_dir.mkdir(parents=True, exist_ok=True)
             for image_path, records in predictions_by_image:
@@ -274,6 +312,7 @@ def run_pred_convert(request: DsetkitPredConvertRequest) -> DsetkitRunResponse:
                     names=names,
                     out_dir=str(out_dir),
                 )
+        target_dir = finalize_conversion_output(out_dir, request.targetFormat)
     except ImportError as exc:
         raise HTTPException(status_code=500, detail="dsetkit convert dependencies are not importable") from exc
     except ValueError as exc:
@@ -335,3 +374,4 @@ def run_evaluate(request: DsetkitEvaluateRequest) -> DsetkitEvaluateResponse:
         metrics=metrics,
         evaluatedImages=len(predictions_by_image),
     )
+

@@ -55,18 +55,18 @@ def normalize_input(
     **kwargs,
 ) -> RequestInput:
     if isinstance(inputs, RequestInput):
-        # 合并原有 extra 和新的 kwargs
+        # Merge existing extra values with new kwargs.
         merged_extra = {**inputs.extra, **kwargs}
-        # 返回新的 RequestInput，保持原对象不变
+        # Return a new RequestInput and keep the original object unchanged.
         return replace(inputs, extra=merged_extra)
 
     elif isinstance(inputs, (str, Path)):
         return RequestInput.from_image(inputs, **kwargs)
 
     elif isinstance(inputs, Mapping):
-        # from_mapping 会把未识别字段放到 extra
+        # from_mapping stores unknown fields in extra.
         req_input = RequestInput.from_mapping(inputs)
-        # 再合并 kwargs
+
         req_input.extra = {**req_input.extra, **kwargs}
         return req_input
 

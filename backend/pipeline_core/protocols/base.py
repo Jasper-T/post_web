@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from abc import abstractmethod
 import json
@@ -11,7 +11,7 @@ from backend.pipeline_core.api_pipeline.request import RequestInput
 from backend.pipeline_core.api_pipeline.helpers import encode_image_from_path, read_image_size
 
 
-DATA_ROOT = Path(os.getenv("FUXING_DATA_ROOT", Path(__file__).resolve().parents[3] / "data")).resolve()
+DATA_ROOT = Path(os.getenv("WEB_POST_DATA_ROOT", Path(__file__).resolve().parents[3] / "data")).resolve()
 PIPELINE_TEMPLATE_DIR = DATA_ROOT / "templates"
 
 
@@ -70,3 +70,4 @@ class BaseImageProtocol(Protocol):
     @abstractmethod
     def build_body(self, inputs: RequestInput) -> dict[str, Any]:
         raise NotImplementedError
+
